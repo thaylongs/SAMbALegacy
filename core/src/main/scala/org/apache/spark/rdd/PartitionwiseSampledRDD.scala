@@ -19,8 +19,9 @@ package org.apache.spark.rdd
 
 import java.util.Random
 
-import scala.reflect.ClassTag
+import br.uff.spark.DataElement
 
+import scala.reflect.ClassTag
 import org.apache.spark.{Partition, TaskContext}
 import org.apache.spark.util.Utils
 import org.apache.spark.util.random.RandomSampler
@@ -61,7 +62,7 @@ private[spark] class PartitionwiseSampledRDD[T: ClassTag, U: ClassTag](
   override def getPreferredLocations(split: Partition): Seq[String] =
     firstParent[T].preferredLocations(split.asInstanceOf[PartitionwiseSampledRDDPartition].prev)
 
-  override def compute(splitIn: Partition, context: TaskContext): Iterator[U] = {
+  override def compute(splitIn: Partition, context: TaskContext): Iterator[DataElement[U]] = {
     val split = splitIn.asInstanceOf[PartitionwiseSampledRDDPartition]
     val thisSampler = sampler.clone
     thisSampler.setSeed(split.seed)

@@ -20,11 +20,11 @@ package org.apache.spark.rdd
 import java.io.{FileNotFoundException, IOException}
 import java.util.concurrent.TimeUnit
 
+import br.uff.spark.DataElement
+
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
@@ -95,7 +95,7 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
   /**
    * Read the content of the checkpoint file associated with the given partition.
    */
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[T]] = {
     val file = new Path(checkpointPath, ReliableCheckpointRDD.checkpointFileName(split.index))
     ReliableCheckpointRDD.readCheckpointFile(file, broadcastedConf, context)
   }
@@ -166,7 +166,7 @@ private[spark] object ReliableCheckpointRDD extends Logging {
   def writePartitionToCheckpointFile[T: ClassTag](
       path: String,
       broadcastedConf: Broadcast[SerializableConfiguration],
-      blockSize: Int = -1)(ctx: TaskContext, iterator: Iterator[T]) {
+      blockSize: Int = -1)(ctx: TaskContext, iterator: Iterator[DataElement[T]]) {
     val env = SparkEnv.get
     val outputDir = new Path(path)
     val fs = outputDir.getFileSystem(broadcastedConf.value.value)

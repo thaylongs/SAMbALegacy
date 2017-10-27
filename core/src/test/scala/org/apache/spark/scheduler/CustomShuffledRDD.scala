@@ -20,6 +20,7 @@ package org.apache.spark.scheduler
 import java.util.Arrays
 import java.util.Objects
 
+import br.uff.spark.DataElement
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 
@@ -102,12 +103,12 @@ class CustomShuffledRDD[K, V, C](
     }
   }
 
-  override def compute(p: Partition, context: TaskContext): Iterator[(K, C)] = {
+  override def compute(p: Partition, context: TaskContext): Iterator[DataElement[(K, C)]] = {
     val part = p.asInstanceOf[CustomShuffledRDDPartition]
-    SparkEnv.get.shuffleManager.getReader(
+    SparkEnv.get.shuffleManager.getReader(task,
       dependency.shuffleHandle, part.startIndexInParent, part.endIndexInParent, context)
-      .read()
-      .asInstanceOf[Iterator[(K, C)]]
+      .read(task)
+      .asInstanceOf[Iterator[DataElement[(K, C)]]]
   }
 
   override def clearDependencies() {

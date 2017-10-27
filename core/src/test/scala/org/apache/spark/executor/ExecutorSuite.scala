@@ -23,10 +23,11 @@ import java.nio.ByteBuffer
 import java.util.Properties
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
+import br.uff.spark.DataElement
+
 import scala.collection.mutable.Map
 import scala.concurrent.duration._
 import scala.language.postfixOps
-
 import org.mockito.ArgumentCaptor
 import org.mockito.Matchers.{any, eq => meq}
 import org.mockito.Mockito.{inOrder, verify, when}
@@ -34,7 +35,6 @@ import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.scalatest.concurrent.Eventually
 import org.scalatest.mockito.MockitoSugar
-
 import org.apache.spark._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.memory.MemoryManager
@@ -294,10 +294,10 @@ class ExecutorSuite extends SparkFunSuite with LocalSparkContext with MockitoSug
 }
 
 class FetchFailureThrowingRDD(sc: SparkContext) extends RDD[Int](sc, Nil) {
-  override def compute(split: Partition, context: TaskContext): Iterator[Int] = {
-    new Iterator[Int] {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[Int]] = {
+    new Iterator[DataElement[Int]] {
       override def hasNext: Boolean = true
-      override def next(): Int = {
+      override def next(): DataElement[Int] = {
         throw new FetchFailedException(
           bmAddress = BlockManagerId("1", "hostA", 1234),
           shuffleId = 0,
@@ -321,10 +321,10 @@ class FetchFailureHidingRDD(
     sc: SparkContext,
     val input: FetchFailureThrowingRDD,
     throwOOM: Boolean) extends RDD[Int](input) {
-  override def compute(split: Partition, context: TaskContext): Iterator[Int] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[Int]] = {
     val inItr = input.compute(split, context)
     try {
-      Iterator(inItr.size)
+      Iterator(DataElement.dummy(inItr.size))
     } catch {
       case t: Throwable =>
         if (throwOOM) {

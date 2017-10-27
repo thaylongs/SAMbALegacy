@@ -19,6 +19,7 @@ package org.apache.spark.util.collection
 
 import java.util.Comparator
 
+import br.uff.spark.DataElement
 import org.apache.spark.storage.DiskBlockObjectWriter
 
 /**
@@ -32,14 +33,14 @@ private[spark] trait WritablePartitionedPairCollection[K, V] {
   /**
    * Insert a key-value pair with a partition into the collection
    */
-  def insert(partition: Int, key: K, value: V): Unit
+  def insert(partition: Int, key: K, value: DataElement[_ <: Any]): Unit
 
   /**
    * Iterate through the data in order of partition ID and then the given comparator. This may
    * destroy the underlying collection.
    */
   def partitionedDestructiveSortedIterator(keyComparator: Option[Comparator[K]])
-    : Iterator[((Int, K), V)]
+    : Iterator[((Int, K), DataElement[Product2[K, V]])]
 
   /**
    * Iterate through the data and write out the elements instead of returning them. Records are

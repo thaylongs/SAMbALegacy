@@ -22,16 +22,16 @@ import java.net._
 import java.nio.charset.StandardCharsets
 import java.util.{ArrayList => JArrayList, List => JList, Map => JMap}
 
+import br.uff.spark.DataElement
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.language.existentials
 import scala.util.control.NonFatal
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.{InputFormat, JobConf, OutputFormat}
 import org.apache.hadoop.mapreduce.{InputFormat => NewInputFormat, OutputFormat => NewOutputFormat}
-
 import org.apache.spark._
 import org.apache.spark.api.java.{JavaPairRDD, JavaRDD, JavaSparkContext}
 import org.apache.spark.broadcast.Broadcast
@@ -58,7 +58,7 @@ private[spark] class PythonRDD(
 
   val asJavaRDD: JavaRDD[Array[Byte]] = JavaRDD.fromRDD(this)
 
-  override def compute(split: Partition, context: TaskContext): Iterator[Array[Byte]] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[Array[Byte]]] = {
     val runner = PythonRunner(func, bufferSize, reuse_worker)
     runner.compute(firstParent.iterator(split, context), split.index, context)
   }
@@ -117,7 +117,7 @@ private[spark] class PythonRunner(
   def compute(
       inputIterator: Iterator[_],
       partitionIndex: Int,
-      context: TaskContext): Iterator[Array[Byte]] = {
+      context: TaskContext): Iterator[DataElement[Array[Byte]]] = {
     val startTime = System.currentTimeMillis
     val env = SparkEnv.get
     val localdir = env.blockManager.diskBlockManager.localDirs.map(f => f.getPath()).mkString(",")
@@ -149,13 +149,13 @@ private[spark] class PythonRunner(
 
     // Return an iterator that read lines from the process's stdout
     val stream = new DataInputStream(new BufferedInputStream(worker.getInputStream, bufferSize))
-    val stdoutIterator = new Iterator[Array[Byte]] {
-      override def next(): Array[Byte] = {
+    val stdoutIterator = new Iterator[DataElement[Array[Byte]]] {
+      override def next(): DataElement[Array[Byte]] = {
         val obj = _nextObj
         if (hasNext) {
           _nextObj = read()
         }
-        obj
+        DataElement.of(obj)
       }
 
       private def read(): Array[Byte] = {
@@ -391,9 +391,9 @@ private class PythonException(msg: String, cause: Exception) extends RuntimeExce
 private class PairwiseRDD(prev: RDD[Array[Byte]]) extends RDD[(Long, Array[Byte])](prev) {
   override def getPartitions: Array[Partition] = prev.partitions
   override val partitioner: Option[Partitioner] = prev.partitioner
-  override def compute(split: Partition, context: TaskContext): Iterator[(Long, Array[Byte])] =
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[(Long, Array[Byte])]] =
     prev.iterator(split, context).grouped(2).map {
-      case Seq(a, b) => (Utils.deserializeLongValue(a), b)
+      case Seq(a, b) => DataElement.of((Utils.deserializeLongValue(a.value), b.value))
       case x => throw new SparkException("PairwiseRDD: unexpected value: " + x)
     }
   val asJavaPairRDD : JavaPairRDD[Long, Array[Byte]] = JavaPairRDD.fromRDD(this)
@@ -424,7 +424,7 @@ private[spark] object PythonRDD extends Logging {
    * This is useful for PySpark to have the partitioner after partitionBy()
    */
   def valueOfPair(pair: JavaPairRDD[Long, Array[Byte]]): JavaRDD[Array[Byte]] = {
-    pair.rdd.mapPartitions(it => it.map(_._2), true)
+    pair.rdd.mapPartitions(it => it.map(obj=>DataElement.of(obj.value._2)), true)
   }
 
   /**
@@ -440,7 +440,7 @@ private[spark] object PythonRDD extends Logging {
       sc: SparkContext,
       rdd: JavaRDD[Array[Byte]],
       partitions: JArrayList[Int]): Int = {
-    type ByteArray = Array[Byte]
+    type ByteArray =DataElement[ Array[Byte]]
     type UnrolledPartition = Array[ByteArray]
     val allPartitions: Array[UnrolledPartition] =
       sc.runJob(rdd, (x: Iterator[ByteArray]) => x.toArray, partitions.asScala)

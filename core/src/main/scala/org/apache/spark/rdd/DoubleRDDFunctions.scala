@@ -17,6 +17,7 @@
 
 package org.apache.spark.rdd
 
+import br.uff.spark.{DataElement, DataflowUtils}
 import org.apache.spark.TaskContext
 import org.apache.spark.annotation.Since
 import org.apache.spark.internal.Logging
@@ -40,7 +41,7 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
    * count of the RDD's elements in one operation.
    */
   def stats(): StatCounter = self.withScope {
-    self.mapPartitions(nums => Iterator(StatCounter(nums))).reduce((a, b) => a.merge(b))
+    self.mapPartitions(nums => Iterator(DataElement.of(StatCounter(DataflowUtils.extractFromIterator(nums))))).reduce((a, b) => a.merge(b))
   }
 
   /** Compute the mean of this RDD's elements. */
@@ -96,7 +97,7 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
   def meanApprox(
       timeout: Long,
       confidence: Double = 0.95): PartialResult[BoundedDouble] = self.withScope {
-    val processPartition = (ctx: TaskContext, ns: Iterator[Double]) => StatCounter(ns)
+    val processPartition = (ctx: TaskContext, ns: Iterator[DataElement[Double]]) => StatCounter(DataflowUtils.extractFromIterator(ns))
     val evaluator = new MeanEvaluator(self.partitions.length, confidence)
     self.context.runApproximateJob(self, processPartition, evaluator, timeout)
   }
@@ -107,7 +108,7 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
   def sumApprox(
       timeout: Long,
       confidence: Double = 0.95): PartialResult[BoundedDouble] = self.withScope {
-    val processPartition = (ctx: TaskContext, ns: Iterator[Double]) => StatCounter(ns)
+    val processPartition = (ctx: TaskContext, ns: Iterator[DataElement[Double]]) => StatCounter(DataflowUtils.extractFromIterator(ns))
     val evaluator = new SumEvaluator(self.partitions.length, confidence)
     self.context.runApproximateJob(self, processPartition, evaluator, timeout)
   }
@@ -127,11 +128,12 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
       Range.Int(0, steps, 1).map(s => min + (s * span) / steps) :+ max
     }
     // Compute the minimum and the maximum
-    val (max: Double, min: Double) = self.mapPartitions { items =>
-      Iterator(items.foldRight(Double.NegativeInfinity,
-        Double.PositiveInfinity)((e: Double, x: (Double, Double)) =>
-        (x._1.max(e), x._2.min(e))))
-    }.reduce { (maxmin1, maxmin2) =>
+    val (max: Double, min: Double) = self.mapPartitionsWithTaskInfo { (items, task) =>
+      Iterator(
+        DataElement.of(items.foldRight(Double.NegativeInfinity, Double.PositiveInfinity)
+        ((e: DataElement[Double], x: (Double, Double)) => (x._1.max(e.value), x._2.min(e.value))), null, true)
+      )
+    }.ignoreIt().reduce { (maxmin1, maxmin2) =>
       (maxmin1._1.max(maxmin2._1), maxmin1._2.min(maxmin2._2))
     }
     if (min.isNaN || max.isNaN || max.isInfinity || min.isInfinity ) {
@@ -178,16 +180,16 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
     // to increment or returns None if there is no bucket. This is done so we can
     // specialize for uniformly distributed buckets and save the O(log n) binary
     // search cost.
-    def histogramPartition(bucketFunction: (Double) => Option[Int])(iter: Iterator[Double]):
-        Iterator[Array[Long]] = {
+    def histogramPartition(bucketFunction: (Double) => Option[Int])(iter: Iterator[DataElement[Double]]):
+        Iterator[DataElement[Array[Long]]] = {
       val counters = new Array[Long](buckets.length - 1)
       while (iter.hasNext) {
-        bucketFunction(iter.next()) match {
+        bucketFunction(iter.next().value) match {
           case Some(x: Int) => counters(x) += 1
           case _ => // No-Op
         }
       }
-      Iterator(counters)
+      Iterator(DataElement.dummy(counters))
     }
     // Merge the counters.
     def mergeCounters(a1: Array[Long], a2: Array[Long]): Array[Long] = {
@@ -246,7 +248,7 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
       // reduce() requires a non-empty RDD. This works because the mapPartitions will make
       // non-empty partitions out of empty ones. But it doesn't handle the no-partitions case,
       // which is below
-      self.mapPartitions(histogramPartition(bucketFunction)).reduce(mergeCounters)
+      self.mapPartitions(histogramPartition(bucketFunction)).ignoreIt().reduce(mergeCounters)
     }
   }
 

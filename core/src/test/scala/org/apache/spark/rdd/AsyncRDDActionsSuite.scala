@@ -58,7 +58,7 @@ class AsyncRDDActionsSuite extends SparkFunSuite with BeforeAndAfterAll with Tim
   test("collectAsync") {
     assert(zeroPartRdd.collectAsync().get() === Seq.empty)
 
-    val collected = sc.parallelize(1 to 1000, 3).collectAsync().get()
+    val collected = sc.parallelize(1 to 1000, 3).collectAsync().get().toIterator.map(a=>a.value).toSeq
     assert(collected === (1 to 1000))
   }
 

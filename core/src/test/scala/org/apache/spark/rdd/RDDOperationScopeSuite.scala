@@ -17,8 +17,8 @@
 
 package org.apache.spark.rdd
 
+import br.uff.spark.DataElement
 import org.scalatest.BeforeAndAfter
-
 import org.apache.spark.{Partition, SparkContext, SparkFunSuite, TaskContext}
 
 /**
@@ -138,5 +138,5 @@ class RDDOperationScopeSuite extends SparkFunSuite with BeforeAndAfter {
 
 private class MyCoolRDD(sc: SparkContext) extends RDD[Int](sc, Nil) {
   override def getPartitions: Array[Partition] = Array.empty
-  override def compute(p: Partition, context: TaskContext): Iterator[Int] = { Nil.toIterator }
+  override def compute(p: Partition, context: TaskContext): Iterator[DataElement[Int]] = { Nil.toIterator }
 }

@@ -28,10 +28,9 @@ import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
-
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, ShuffleWriteMetrics}
-import org.apache.spark.internal.{config, Logging}
+import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.memory.{MemoryManager, MemoryMode}
 import org.apache.spark.network._
 import org.apache.spark.network.buffer.ManagedBuffer

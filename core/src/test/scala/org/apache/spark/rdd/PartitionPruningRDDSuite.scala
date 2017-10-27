@@ -17,6 +17,7 @@
 
 package org.apache.spark.rdd
 
+import br.uff.spark.DataElement
 import org.apache.spark.{Partition, SharedSparkContext, SparkFunSuite, TaskContext}
 
 class PartitionPruningRDDSuite extends SparkFunSuite with SharedSparkContext {
@@ -54,7 +55,7 @@ class PartitionPruningRDDSuite extends SparkFunSuite with SharedSparkContext {
       }
 
       def compute(split: Partition, context: TaskContext) = {
-        List(split.asInstanceOf[TestPartition].testValue).iterator
+        List(split.asInstanceOf[TestPartition].testValue).map(a=>DataElement.of(a)).iterator
       }
     }
     val prunedRDD1 = PartitionPruningRDD.create(rdd, _ == 0)

@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.joins
 
+import br.uff.spark.DataElement
 import org.apache.spark._
 import org.apache.spark.rdd.{CartesianPartition, CartesianRDD, RDD}
 import org.apache.spark.sql.catalyst.InternalRow
@@ -39,7 +40,7 @@ class UnsafeCartesianRDD(
     spillThreshold: Int)
   extends CartesianRDD[UnsafeRow, UnsafeRow](left.sparkContext, left, right) {
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(UnsafeRow, UnsafeRow)] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[(UnsafeRow, UnsafeRow)]] = {
     val rowArray = new ExternalAppendOnlyUnsafeRowArray(inMemoryBufferThreshold, spillThreshold)
 
     val partition = split.asInstanceOf[CartesianPartition]

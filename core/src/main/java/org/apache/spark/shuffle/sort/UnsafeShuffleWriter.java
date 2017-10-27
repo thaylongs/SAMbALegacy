@@ -23,6 +23,7 @@ import java.nio.channels.FileChannel;
 import static java.nio.file.StandardOpenOption.*;
 import java.util.Iterator;
 
+import br.uff.spark.DataElement;
 import scala.Option;
 import scala.Product2;
 import scala.collection.JavaConverters;
@@ -174,12 +175,12 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
    * This convenience method should only be called in test code.
    */
   @VisibleForTesting
-  public void write(Iterator<Product2<K, V>> records) throws IOException {
+  public void write(Iterator<DataElement<? extends Product2<K, V>>> records) throws IOException {
     write(JavaConverters.asScalaIteratorConverter(records).asScala());
   }
 
   @Override
-  public void write(scala.collection.Iterator<Product2<K, V>> records) throws IOException {
+  public void write(scala.collection.Iterator<DataElement<? extends Product2<K, V>>> records) throws IOException {
     // Keep track of success so we know if we encountered an exception
     // We do this rather than a standard try/catch/re-throw to handle
     // generic throwables.
@@ -253,13 +254,13 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   @VisibleForTesting
-  void insertRecordIntoSorter(Product2<K, V> record) throws IOException {
+  void insertRecordIntoSorter(DataElement<? extends Product2<K, V>> record) throws IOException {
     assert(sorter != null);
-    final K key = record._1();
+    final K key = record.value()._1();
     final int partitionId = partitioner.getPartition(key);
     serBuffer.reset();
     serOutputStream.writeKey(key, OBJECT_CLASS_TAG);
-    serOutputStream.writeValue(record._2(), OBJECT_CLASS_TAG);
+    serOutputStream.writeValue(record, OBJECT_CLASS_TAG);
     serOutputStream.flush();
 
     final int serializedRecordSize = serBuffer.size();

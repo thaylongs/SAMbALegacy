@@ -17,15 +17,19 @@
 
 package org.apache.spark.util.collection
 
+import br.uff.spark.{DataElement, Task}
+
 import scala.reflect.ClassTag
 import scala.util.Random
-
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.util.SizeEstimator
 
 class SizeTrackerSuite extends SparkFunSuite {
   val NORMAL_ERROR = 0.20
   val HIGH_ERROR = 0.30
+
+  val testTask = new Task(null)
+  testTask.description = "SizeTrackerSuiteTestFakeRDD"
 
   import SizeTrackerSuite._
 
@@ -79,10 +83,10 @@ class SizeTrackerSuite extends SparkFunSuite {
   }
 
   def testMap[K, V](numElements: Int, makeElement: (Int) => (K, V)) {
-    val map = new SizeTrackingAppendOnlyMap[K, V]
+    val map = new SizeTrackingAppendOnlyMap[K, V](testTask)
     for (i <- 0 until numElements) {
       val (k, v) = makeElement(i)
-      map(k) = v
+      map(k) = DataElement.dummy(v)
       expectWithinError(map, map.estimateSize(), if (i < 32) HIGH_ERROR else NORMAL_ERROR)
     }
   }
@@ -97,6 +101,9 @@ class SizeTrackerSuite extends SparkFunSuite {
 }
 
 private object SizeTrackerSuite {
+
+  val testTask = new Task(null)
+  testTask.description = "SizeTrackerSuiteTestFakeRDD"
 
   /**
    * Run speed tests for size tracking collections.
@@ -155,22 +162,22 @@ private object SizeTrackerSuite {
    */
   def mapSpeedTest(numElements: Int): Unit = {
     val baseTimes = for (i <- 0 until 10) yield time {
-      val map = new AppendOnlyMap[Int, LargeDummyClass]
+      val map = new AppendOnlyMap[Int, LargeDummyClass](testTask)
       for (i <- 0 until numElements) {
-        map(i) = new LargeDummyClass
+        map(i) = DataElement.dummy(new LargeDummyClass)
       }
     }
     val sampledTimes = for (i <- 0 until 10) yield time {
-      val map = new SizeTrackingAppendOnlyMap[Int, LargeDummyClass]
+      val map = new SizeTrackingAppendOnlyMap[Int, LargeDummyClass](testTask)
       for (i <- 0 until numElements) {
-        map(i) = new LargeDummyClass
+        map(i) = DataElement.dummy(new LargeDummyClass)
         map.estimateSize()
       }
     }
     val unsampledTimes = for (i <- 0 until 3) yield time {
-      val map = new AppendOnlyMap[Int, LargeDummyClass]
+      val map = new AppendOnlyMap[Int, LargeDummyClass](testTask)
       for (i <- 0 until numElements) {
-        map(i) = new LargeDummyClass
+        map(i) = DataElement.dummy(new LargeDummyClass)
         SizeEstimator.estimate(map)
       }
     }

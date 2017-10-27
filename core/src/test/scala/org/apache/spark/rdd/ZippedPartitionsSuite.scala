@@ -17,11 +17,12 @@
 
 package org.apache.spark.rdd
 
+import br.uff.spark.{DataElement, Task}
 import org.apache.spark.{SharedSparkContext, SparkFunSuite}
 
 object ZippedPartitionsSuite {
-  def procZippedData(i: Iterator[Int], s: Iterator[String], d: Iterator[Double]) : Iterator[Int] = {
-    Iterator(i.toArray.size, s.toArray.size, d.toArray.size)
+  def procZippedData(i: Iterator[DataElement[Int]], s: Iterator[DataElement[String]], d: Iterator[DataElement[Double]], task: Task) : Iterator[DataElement[Int]] = {
+    Iterator(DataElement.of(i.toArray.size), DataElement.of(s.toArray.size), DataElement.of(d.toArray.size))
   }
 }
 

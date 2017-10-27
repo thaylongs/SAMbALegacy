@@ -19,10 +19,10 @@ package org.apache.spark.util.random
 
 import java.util.Random
 
+import br.uff.spark.DataElement
+
 import scala.reflect.ClassTag
-
 import org.apache.commons.math3.distribution.PoissonDistribution
-
 import org.apache.spark.annotation.DeveloperApi
 
 /**
@@ -38,8 +38,8 @@ import org.apache.spark.annotation.DeveloperApi
 trait RandomSampler[T, U] extends Pseudorandom with Cloneable with Serializable {
 
   /** take a random sample */
-  def sample(items: Iterator[T]): Iterator[U] =
-    items.filter(_ => sample > 0).asInstanceOf[Iterator[U]]
+  def sample(items: Iterator[DataElement[T]]): Iterator[DataElement[U]] =
+    items.filter(_ => sample > 0).asInstanceOf[Iterator[DataElement[U]]]
 
   /**
    * Whether to sample the next item or not.
@@ -220,7 +220,7 @@ class PoissonSampler[T](
     }
   }
 
-  override def sample(items: Iterator[T]): Iterator[T] = {
+  override def sample(items: Iterator[DataElement[T]]): Iterator[DataElement[T]] = {
     if (fraction <= 0.0) {
       Iterator.empty
     } else {

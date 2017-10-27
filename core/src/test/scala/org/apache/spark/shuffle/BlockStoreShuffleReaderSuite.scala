@@ -20,8 +20,8 @@ package org.apache.spark.shuffle
 import java.io.{ByteArrayOutputStream, InputStream}
 import java.nio.ByteBuffer
 
+import br.uff.spark.DataElement
 import org.mockito.Mockito.{mock, when}
-
 import org.apache.spark._
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
 import org.apache.spark.serializer.{JavaSerializer, SerializerManager}
@@ -80,7 +80,7 @@ class BlockStoreShuffleReaderSuite extends SparkFunSuite with LocalSparkContext 
     val serializationStream = serializer.newInstance().serializeStream(byteOutputStream)
     (0 until keyValuePairsPerMap).foreach { i =>
       serializationStream.writeKey(i)
-      serializationStream.writeValue(2*i)
+      serializationStream.writeValue(DataElement.of(2*i))
     }
 
     // Setup the mocked BlockManager to return RecordingManagedBuffers.
@@ -135,7 +135,7 @@ class BlockStoreShuffleReaderSuite extends SparkFunSuite with LocalSparkContext 
       blockManager,
       mapOutputTracker)
 
-    assert(shuffleReader.read().length === keyValuePairsPerMap * numMaps)
+    assert(shuffleReader.read(null).length === keyValuePairsPerMap * numMaps)
 
     // Calling .length above will have exhausted the iterator; make sure that exhausting the
     // iterator caused retain and release to be called on each buffer.

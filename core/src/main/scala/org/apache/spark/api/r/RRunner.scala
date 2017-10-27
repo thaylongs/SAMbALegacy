@@ -21,9 +21,10 @@ import java.io._
 import java.net.{InetAddress, ServerSocket}
 import java.util.Arrays
 
+import br.uff.spark.DataElement
+
 import scala.io.Source
 import scala.util.Try
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
@@ -56,7 +57,7 @@ private[spark] class RRunner[U](
 
   def compute(
       inputIterator: Iterator[_],
-      partitionIndex: Int): Iterator[U] = {
+      partitionIndex: Int): Iterator[DataElement[U]] = {
     // Timing start
     bootTime = System.currentTimeMillis / 1000.0
 
@@ -84,8 +85,8 @@ private[spark] class RRunner[U](
     serverSocket.close()
 
     try {
-      return new Iterator[U] {
-        def next(): U = {
+      return new Iterator[DataElement[U]] {
+        def next(): DataElement[U] = {
           val obj = _nextObj
           if (hasNext) {
             _nextObj = read()
@@ -207,7 +208,7 @@ private[spark] class RRunner[U](
     }.start()
   }
 
-  private def read(): U = {
+  private def read(): DataElement[U] = {
     try {
       val length = dataStream.readInt()
 
@@ -233,7 +234,7 @@ private[spark] class RRunner[U](
                 boot + init + broadcast + input + compute + output))
           read()
         case length if length >= 0 =>
-          readData(length).asInstanceOf[U]
+          readData(length).asInstanceOf[DataElement[U]]
       }
     } catch {
       case eof: EOFException =>

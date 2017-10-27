@@ -17,6 +17,7 @@
 
 package org.apache.spark.rdd
 
+import br.uff.spark.DataElement
 import org.apache.spark.{SharedSparkContext, SparkFunSuite}
 import org.apache.spark.util.random.{BernoulliSampler, PoissonSampler, RandomSampler}
 
@@ -31,8 +32,8 @@ class MockSampler extends RandomSampler[Long, Long] {
 
   override def sample(): Int = 1
 
-  override def sample(items: Iterator[Long]): Iterator[Long] = {
-    Iterator(s)
+  override def sample(items: Iterator[DataElement[Long]]): Iterator[DataElement[Long]] = {
+    Iterator(DataElement.of(s))
   }
 
   override def clone: MockSampler = new MockSampler

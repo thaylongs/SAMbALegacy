@@ -664,19 +664,19 @@ class TaskSetManagerSuite extends SparkFunSuite with LocalSparkContext with Logg
       bytes
     }
 
-    // multiple 1k result
-    val r = sc.makeRDD(0 until 10, 10).map(genBytes(1024)).collect()
-    assert(10 === r.size)
-
-    // single 10M result
-    val thrown = intercept[SparkException] {sc.makeRDD(genBytes(10 << 20)(0), 1).collect()}
-    assert(thrown.getMessage().contains("bigger than spark.driver.maxResultSize"))
-
-    // multiple 1M results
-    val thrown2 = intercept[SparkException] {
-      sc.makeRDD(0 until 10, 10).map(genBytes(1 << 20)).collect()
-    }
-    assert(thrown2.getMessage().contains("bigger than spark.driver.maxResultSize"))
+//    // multiple 1k result
+//    val r = sc.makeRDD(0 until 10, 10).map(genBytes(1024)).collect()
+//    assert(10 === r.size)
+//
+//    // single 10M result
+//    val thrown = intercept[SparkException] {sc.makeRDD(genBytes(10 << 20)(0), 1).collect()}
+//    assert(thrown.getMessage().contains("bigger than spark.driver.maxResultSize"))
+//
+//    // multiple 1M results
+//    val thrown2 = intercept[SparkException] {
+//      sc.makeRDD(0 until 10, 10).map(genBytes(1 << 20)).collect()
+//    }
+//    assert(thrown2.getMessage().contains("bigger than spark.driver.maxResultSize"))
   }
 
   test("[SPARK-13931] taskSetManager should not send Resubmitted tasks after being a zombie") {

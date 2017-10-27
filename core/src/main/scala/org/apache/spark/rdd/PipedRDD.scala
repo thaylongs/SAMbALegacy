@@ -23,15 +23,16 @@ import java.io.FilenameFilter
 import java.io.IOException
 import java.io.OutputStreamWriter
 import java.io.PrintWriter
-import java.util.StringTokenizer
+import java.util.{StringTokenizer, UUID}
 import java.util.concurrent.atomic.AtomicReference
 
+import br.uff.spark.{DataElement, DataSource}
+
 import scala.collection.JavaConverters._
-import scala.collection.Map
+import scala.collection.{Map, mutable}
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 import scala.reflect.ClassTag
-
 import org.apache.spark.{Partition, SparkEnv, TaskContext}
 import org.apache.spark.util.Utils
 
@@ -51,6 +52,9 @@ private[spark] class PipedRDD[T: ClassTag](
     encoding: String)
   extends RDD[String](prev) {
 
+
+  override def ignoreIt() = throw  new Exception("This kind of RDD can't be ignored yet, maybe in the future it changes, sorry, send email to the main developer about it for more information ;-)")
+
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
   /**
@@ -63,7 +67,9 @@ private[spark] class PipedRDD[T: ClassTag](
     }
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[String] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[String]] = {
+    val allUsedElements  = new java.util.LinkedList[DataElement[_<:Any]]()
+    val allCreatedElements  = new java.util.LinkedList[DataElement[_<:Any]]()
     val pb = new ProcessBuilder(command.asJava)
     // Add the environmental variables to the process.
     val currentEnvVars = pb.environment()
@@ -144,10 +150,11 @@ private[spark] class PipedRDD[T: ClassTag](
           }
           for (elem <- firstParent[T].iterator(split, context)) {
             if (printRDDElement != null) {
-              printRDDElement(elem, out.println)
+              printRDDElement(elem.value, out.println)
             } else {
-              out.println(elem)
+              out.println(elem.value)
             }
+            allUsedElements.add(elem)
           }
           // scalastyle:on println
         } catch {
@@ -160,12 +167,14 @@ private[spark] class PipedRDD[T: ClassTag](
 
     // Return an iterator that read lines from the process's stdout
     val lines = Source.fromInputStream(proc.getInputStream)(encoding).getLines
-    new Iterator[String] {
-      def next(): String = {
+    new Iterator[DataElement[String]] {
+      def next(): DataElement[String] = {
         if (!hasNext()) {
           throw new NoSuchElementException()
         }
-        lines.next()
+        val result = DataElement.of(lines.next(), task, task.isIgnored)
+        allCreatedElements.add(result)
+        result
       }
 
       def hasNext(): Boolean = {
@@ -192,6 +201,32 @@ private[spark] class PipedRDD[T: ClassTag](
           }
           logDebug(s"Removed task working directory $taskDirectory")
         }
+
+        new Thread(s"Saving dependencies of pipe process: $command") {
+          override def run() = {
+            DataSource.upCount()
+            val dependenciesIDS = new mutable.MutableList[UUID]()
+            try {
+              for (usedElements <- allUsedElements.asScala) {
+                dependenciesIDS += usedElements.id
+              }
+              for (createdElements <- allCreatedElements.asScala) {
+                createdElements.addDepencencie(dependenciesIDS)
+              }
+            } catch {
+              case e: Exception => e.printStackTrace()
+            } finally {
+              try {
+                DataSource.downCount()
+                allCreatedElements.clear()
+                allUsedElements.clear()
+                dependenciesIDS.clear()
+              } catch {
+                case e: Exception => e.printStackTrace()
+              }
+            }
+          }
+        }.start()
       }
 
       private def propagateChildException(): Unit = {

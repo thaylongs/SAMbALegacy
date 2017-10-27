@@ -19,6 +19,7 @@ package org.apache.spark.shuffle.sort
 
 import java.util.concurrent.ConcurrentHashMap
 
+import br.uff.spark.Task
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle._
@@ -111,6 +112,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
    * Called on executors by reduce tasks.
    */
   override def getReader[K, C](
+      task:Task,
       handle: ShuffleHandle,
       startPartition: Int,
       endPartition: Int,
@@ -123,7 +125,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   override def getWriter[K, V](
       handle: ShuffleHandle,
       mapId: Int,
-      context: TaskContext): ShuffleWriter[K, V] = {
+      context: TaskContext,
+      taskOfRDD:Task): ShuffleWriter[K, V] = {
     numMapsForShuffle.putIfAbsent(
       handle.shuffleId, handle.asInstanceOf[BaseShuffleHandle[_, _, _]].numMaps)
     val env = SparkEnv.get
@@ -146,7 +149,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           context,
           env.conf)
       case other: BaseShuffleHandle[K @unchecked, V @unchecked, _] =>
-        new SortShuffleWriter(shuffleBlockResolver, other, mapId, context)
+        new SortShuffleWriter(taskOfRDD, shuffleBlockResolver, other, mapId, context)
     }
   }
 

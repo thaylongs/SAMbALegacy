@@ -17,12 +17,15 @@
 
 package org.apache.spark.shuffle
 
+import br.uff.spark.{DataElement, Task}
 import org.apache.spark._
-import org.apache.spark.internal.{config, Logging}
+import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.serializer.SerializerManager
 import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
+
+import scala.collection.AbstractIterator
 
 /**
  * Fetches and reads the partitions in range [startPartition, endPartition) from a shuffle by
@@ -41,7 +44,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
   private val dep = handle.dependency
 
   /** Read the combined key-values for this reduce task */
-  override def read(): Iterator[Product2[K, C]] = {
+  override def read(taskOfRDD: Task): Iterator[DataElement[Product2[K, C]]] = {
     val wrappedStreams = new ShuffleBlockFetcherIterator(
       context,
       blockManager.shuffleClient,
@@ -77,21 +80,29 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // An interruptible iterator must be used here in order to support task cancellation
     val interruptibleIter = new InterruptibleIterator[(Any, Any)](context, metricIter)
 
-    val aggregatedIter: Iterator[Product2[K, C]] = if (dep.aggregator.isDefined) {
+    val aggregatedIter: Iterator[DataElement[_<:Product2[K, C]]] = if (dep.aggregator.isDefined) {
       if (dep.mapSideCombine) {
         // We are reading values that are already combined
         val combinedKeyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, C)]]
-        dep.aggregator.get.combineCombinersByKey(combinedKeyValuesIterator, context)
+        dep.aggregator.get.combineCombinersByKey(combinedKeyValuesIterator, context, taskOfRDD)
       } else {
         // We don't know the value type, but also don't care -- the dependency *should*
         // have made sure its compatible w/ this aggregator, which will convert the value
         // type to the combined type C
         val keyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, Nothing)]]
-        dep.aggregator.get.combineValuesByKey(keyValuesIterator, context)
+        dep.aggregator.get.combineValuesByKey(keyValuesIterator, context, taskOfRDD)
       }
     } else {
       require(!dep.mapSideCombine, "Map-side combine without Aggregator specified!")
-      interruptibleIter.asInstanceOf[Iterator[Product2[K, C]]]
+      // The follow code it's necessary because It read data that was writed in disk with BypassMergeSortShuffleWriter
+      var iterableWrapper = interruptibleIter.asInstanceOf[Iterator[(K, DataElement[(K, C)])]]
+      new AbstractIterator[DataElement[(K, C)]]() {
+        override def hasNext = iterableWrapper.hasNext
+
+        override def next() = {
+          iterableWrapper.next()._2
+        }
+      }
     }
 
     // Sort the output if there is a sort ordering defined.
@@ -99,14 +110,14 @@ private[spark] class BlockStoreShuffleReader[K, C](
       case Some(keyOrd: Ordering[K]) =>
         // Create an ExternalSorter to sort the data.
         val sorter =
-          new ExternalSorter[K, C, C](context, ordering = Some(keyOrd), serializer = dep.serializer)
+          new ExternalSorter[K, C, C](taskOfRDD, context, ordering = Some(keyOrd), serializer = dep.serializer)
         sorter.insertAll(aggregatedIter)
         context.taskMetrics().incMemoryBytesSpilled(sorter.memoryBytesSpilled)
         context.taskMetrics().incDiskBytesSpilled(sorter.diskBytesSpilled)
         context.taskMetrics().incPeakExecutionMemory(sorter.peakMemoryUsedBytes)
-        CompletionIterator[Product2[K, C], Iterator[Product2[K, C]]](sorter.iterator, sorter.stop())
+        CompletionIterator[DataElement[Product2[K, C]], Iterator[DataElement[Product2[K, C]]]](sorter.iterator, sorter.stop())
       case None =>
-        aggregatedIter
+        aggregatedIter.asInstanceOf[Iterator[DataElement[Product2[K, C]]]]
     }
   }
 }

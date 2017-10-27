@@ -17,8 +17,9 @@
 
 package org.apache.spark.rdd
 
-import scala.reflect.ClassTag
+import br.uff.spark.TransformationType
 
+import scala.reflect.ClassTag
 import org.apache.spark.{Partitioner, RangePartitioner}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
@@ -61,7 +62,7 @@ class OrderedRDDFunctions[K : Ordering : ClassTag,
   {
     val part = new RangePartitioner(numPartitions, self, ascending)
     new ShuffledRDD[K, V, V](self, part)
-      .setKeyOrdering(if (ascending) ordering else ordering.reverse)
+      .setKeyOrdering(if (ascending) ordering else ordering.reverse).setTransformationType(TransformationType.SORT_BY_KEY)
   }
 
   /**
@@ -72,7 +73,7 @@ class OrderedRDDFunctions[K : Ordering : ClassTag,
    * because it can push the sorting down into the shuffle machinery.
    */
   def repartitionAndSortWithinPartitions(partitioner: Partitioner): RDD[(K, V)] = self.withScope {
-    new ShuffledRDD[K, V, V](self, partitioner).setKeyOrdering(ordering)
+    new ShuffledRDD[K, V, V](self, partitioner).setKeyOrdering(ordering).ignoreIt()
   }
 
   /**

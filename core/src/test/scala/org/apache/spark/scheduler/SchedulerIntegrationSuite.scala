@@ -17,20 +17,20 @@
 package org.apache.spark.scheduler
 
 import java.util.Properties
-import java.util.concurrent.{TimeoutException, TimeUnit}
+import java.util.concurrent.{TimeUnit, TimeoutException}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
+
+import br.uff.spark.DataElement
 
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet}
 import scala.concurrent.Future
 import scala.concurrent.duration.{Duration, SECONDS}
 import scala.language.existentials
 import scala.reflect.ClassTag
-
 import org.scalactic.TripleEquals
 import org.scalatest.Assertions.AssertionsHelper
 import org.scalatest.concurrent.Eventually._
 import org.scalatest.time.SpanSugar._
-
 import org.apache.spark._
 import org.apache.spark.TaskState._
 import org.apache.spark.internal.Logging
@@ -199,7 +199,7 @@ abstract class SchedulerIntegrationSuite[T <: MockBackend: ClassTag] extends Spa
   /** models a stage boundary with a single dependency, like a shuffle */
   def shuffle(nParts: Int, input: MockRDD): MockRDD = {
     val partitioner = new HashPartitioner(nParts)
-    val shuffleDep = new ShuffleDependency[Int, Int, Nothing](input, partitioner)
+    val shuffleDep = new ShuffleDependency[Int, Int, Nothing](input, partitioner, taskOfRDDWhichRequestThis = null)
     new MockRDD(sc, nParts, List(shuffleDep))
   }
 
@@ -207,7 +207,7 @@ abstract class SchedulerIntegrationSuite[T <: MockBackend: ClassTag] extends Spa
   def join(nParts: Int, inputs: MockRDD*): MockRDD = {
     val partitioner = new HashPartitioner(nParts)
     val shuffleDeps = inputs.map { inputRDD =>
-      new ShuffleDependency[Int, Int, Nothing](inputRDD, partitioner)
+      new ShuffleDependency[Int, Int, Nothing](inputRDD, partitioner, taskOfRDDWhichRequestThis = null)
     }
     new MockRDD(sc, nParts, shuffleDeps)
   }
@@ -450,7 +450,7 @@ class MockRDD(
 
   MockRDD.validate(numPartitions, shuffleDeps)
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(Int, Int)] =
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[(Int, Int)]] =
     throw new RuntimeException("should not be reached")
   override def getPartitions: Array[Partition] = {
     (0 until numPartitions).map(i => new Partition {

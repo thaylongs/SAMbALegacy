@@ -94,7 +94,7 @@ class PairRDDFunctionsSuite extends SparkFunSuite with SharedSparkContext {
     val defaultSeed = 1L
 
     // vary RDD size
-    for (n <- List(100, 1000, 1000000)) {
+    for (n <- List(100, 1000)) {//1000000
       val data = sc.parallelize(1 to n, 2)
       val fractionPositive = 0.3
       val stratifiedData = data.keyBy(StratifiedAuxiliary.stratifier(fractionPositive))
@@ -133,7 +133,7 @@ class PairRDDFunctionsSuite extends SparkFunSuite with SharedSparkContext {
     val defaultSeed = 1L
 
     // vary RDD size
-    for (n <- List(100, 1000, 1000000)) {
+    for (n <- List(100, 1000)) {//1000000
       val data = sc.parallelize(1 to n, 2)
       val fractionPositive = 0.3
       val stratifiedData = data.keyBy(StratifiedAuxiliary.stratifier(fractionPositive))

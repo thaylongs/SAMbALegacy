@@ -19,6 +19,7 @@ package org.apache.spark.util.collection
 
 import java.util.Comparator
 
+import br.uff.spark.DataElement
 import org.apache.spark.util.collection.WritablePartitionedPairCollection._
 
 /**
@@ -43,7 +44,7 @@ private[spark] class PartitionedPairBuffer[K, V](initialCapacity: Int = 64)
   private var data = new Array[AnyRef](2 * initialCapacity)
 
   /** Add an element into the buffer */
-  def insert(partition: Int, key: K, value: V): Unit = {
+  def insert(partition: Int, key: K, value: DataElement[_ <: Any]): Unit = {
     if (curSize == capacity) {
       growArray()
     }
@@ -73,22 +74,22 @@ private[spark] class PartitionedPairBuffer[K, V](initialCapacity: Int = 64)
 
   /** Iterate through the data in a given order. For this class this is not really destructive. */
   override def partitionedDestructiveSortedIterator(keyComparator: Option[Comparator[K]])
-    : Iterator[((Int, K), V)] = {
+    : Iterator[((Int, K), DataElement[Product2[K, V]])] = {
     val comparator = keyComparator.map(partitionKeyComparator).getOrElse(partitionComparator)
     new Sorter(new KVArraySortDataFormat[(Int, K), AnyRef]).sort(data, 0, curSize, comparator)
-    iterator
+    iterator.asInstanceOf[Iterator[((Int, K), DataElement[Product2[K, V]])]]
   }
 
-  private def iterator(): Iterator[((Int, K), V)] = new Iterator[((Int, K), V)] {
+  private def iterator(): Iterator[((Int, K), DataElement[(K,V)])] = new Iterator[((Int, K), DataElement[(K,V)])] {
     var pos = 0
 
     override def hasNext: Boolean = pos < curSize
 
-    override def next(): ((Int, K), V) = {
+    override def next(): ((Int, K), DataElement[(K , V)]) = {
       if (!hasNext) {
         throw new NoSuchElementException
       }
-      val pair = (data(2 * pos).asInstanceOf[(Int, K)], data(2 * pos + 1).asInstanceOf[V])
+      val pair = (data(2 * pos).asInstanceOf[(Int, K)], data(2 * pos + 1).asInstanceOf[DataElement[(K,V)]])
       pos += 1
       pair
     }

@@ -19,9 +19,10 @@ package org.apache.spark.api.java
 
 import java.lang.{Double => JDouble}
 
+import br.uff.spark.DataElement
+
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
-
 import org.apache.spark.Partitioner
 import org.apache.spark.annotation.Since
 import org.apache.spark.api.java.function.{Function => JFunction}

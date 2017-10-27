@@ -19,10 +19,8 @@ package org.apache.spark.api.python
 
 import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io._
-
 import org.apache.spark.SparkException
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging

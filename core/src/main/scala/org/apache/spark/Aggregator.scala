@@ -17,6 +17,7 @@
 
 package org.apache.spark
 
+import br.uff.spark.{DataElement, Task}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.util.collection.ExternalAppendOnlyMap
 
@@ -34,19 +35,19 @@ case class Aggregator[K, V, C] (
     mergeValue: (C, V) => C,
     mergeCombiners: (C, C) => C) {
 
-  def combineValuesByKey(
-      iter: Iterator[_ <: Product2[K, V]],
-      context: TaskContext): Iterator[(K, C)] = {
-    val combiners = new ExternalAppendOnlyMap[K, V, C](createCombiner, mergeValue, mergeCombiners)
+  def combineValuesByKey(// used by groupByKey
+      iter: Iterator[_ <:Any ],
+      context: TaskContext, taskOfRDD:Task): Iterator[DataElement[(K, C)]] = {
+    val combiners = new ExternalAppendOnlyMap[K, V, C](taskOfRDD, createCombiner, mergeValue, mergeCombiners)
     combiners.insertAll(iter)
     updateMetrics(context, combiners)
     combiners.iterator
   }
 
-  def combineCombinersByKey(
-      iter: Iterator[_ <: Product2[K, C]],
-      context: TaskContext): Iterator[(K, C)] = {
-    val combiners = new ExternalAppendOnlyMap[K, C, C](identity, mergeCombiners, mergeCombiners)
+  def combineCombinersByKey(// used by reduceByKey
+      iter: Iterator[_ <: Any],
+      context: TaskContext, taskOfRDD:Task): Iterator[DataElement[_<:Product2[K, C]]] = {
+    val combiners = new ExternalAppendOnlyMap[K, C, C](taskOfRDD, identity, mergeCombiners, mergeCombiners)
     combiners.insertAll(iter)
     updateMetrics(context, combiners)
     combiners.iterator

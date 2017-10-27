@@ -19,10 +19,11 @@ package org.apache.spark.rdd
 
 import java.io.{IOException, ObjectOutputStream}
 
+import br.uff.spark.{DataElement, DataflowUtils, TransformationType}
+
 import scala.collection.mutable.ArrayBuffer
 import scala.language.existentials
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
@@ -81,6 +82,14 @@ class CoGroupedRDD[K: ClassTag](
     part: Partitioner)
   extends RDD[(K, Array[Iterable[_]])](rdds.head.context, Nil) {
 
+  setTransformationType(TransformationType.CO_GROUPED)
+
+  // loading dependencies
+  for (elem <- rdds) {
+    task.addDepencencie(elem)
+    elem.task.checkAndPersist()
+  }
+
   // For example, `(k, a) cogroup (k, b)` produces k -> Array(ArrayBuffer as, ArrayBuffer bs).
   // Each ArrayBuffer is represented as a CoGroup, and the resulting Array as a CoGroupCombiner.
   // CoGroupValue is the intermediate state of each value before being merged in compute.
@@ -104,7 +113,7 @@ class CoGroupedRDD[K: ClassTag](
       } else {
         logDebug("Adding shuffle dependency with " + rdd)
         new ShuffleDependency[K, Any, CoGroupCombiner](
-          rdd.asInstanceOf[RDD[_ <: Product2[K, _]]], part, serializer)
+          rdd.asInstanceOf[RDD[_ <: Product2[K, _]]], part, serializer,taskOfRDDWhichRequestThis = task)
       }
     }
   }
@@ -128,12 +137,12 @@ class CoGroupedRDD[K: ClassTag](
 
   override val partitioner: Some[Partitioner] = Some(part)
 
-  override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
+  override def compute(s: Partition, context: TaskContext): Iterator[DataElement[(K, Array[Iterable[_]])]] = {
     val split = s.asInstanceOf[CoGroupPartition]
     val numRdds = dependencies.length
 
     // A list of (rdd iterator, dependency number) pairs
-    val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
+    val rddIterators = new ArrayBuffer[(Iterator[DataElement[Product2[K, Any]]], Int)]
     for ((dep, depNum) <- dependencies.zipWithIndex) dep match {
       case oneToOneDependency: OneToOneDependency[Product2[K, Any]] @unchecked =>
         val dependencyPartition = split.narrowDeps(depNum).get.split
@@ -144,20 +153,20 @@ class CoGroupedRDD[K: ClassTag](
       case shuffleDependency: ShuffleDependency[_, _, _] =>
         // Read map outputs of shuffle
         val it = SparkEnv.get.shuffleManager
-          .getReader(shuffleDependency.shuffleHandle, split.index, split.index + 1, context)
-          .read()
-        rddIterators += ((it, depNum))
+          .getReader(task, shuffleDependency.shuffleHandle, split.index, split.index + 1, context)
+          .read(task)
+        rddIterators += ((it.asInstanceOf[Iterator[DataElement[Product2[K, Any]]]], depNum))
     }
 
     val map = createExternalMap(numRdds)
     for ((it, depNum) <- rddIterators) {
-      map.insertAll(it.map(pair => (pair._1, new CoGroupValue(pair._2, depNum))))
+      map.insertAll(it.map(pair => DataElement.of((pair.value._1, new CoGroupValue(pair.value._2, depNum)), task, task.isIgnored, pair)))
     }
     context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled)
     context.taskMetrics().incDiskBytesSpilled(map.diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(map.peakMemoryUsedBytes)
     new InterruptibleIterator(context,
-      map.iterator.asInstanceOf[Iterator[(K, Array[Iterable[_]])]])
+      map.iterator.asInstanceOf[Iterator[DataElement[(K, Array[Iterable[_]])]]])
   }
 
   private def createExternalMap(numRdds: Int)
@@ -182,7 +191,7 @@ class CoGroupedRDD[K: ClassTag](
         }
         combiner1
       }
-    new ExternalAppendOnlyMap[K, CoGroupValue, CoGroupCombiner](
+    new ExternalAppendOnlyMap[K, CoGroupValue, CoGroupCombiner](task,
       createCombiner, mergeValue, mergeCombiners)
   }
 

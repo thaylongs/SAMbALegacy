@@ -17,8 +17,9 @@
 
 package org.apache.spark.rdd
 
-import scala.reflect.ClassTag
+import br.uff.spark.{DataElement, TransformationType}
 
+import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
@@ -42,6 +43,11 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
     @transient var prev: RDD[_ <: Product2[K, V]],
     part: Partitioner)
   extends RDD[(K, C)](prev.context, Nil) {
+
+  // loading dependencies
+  task.addDepencencie(prev)
+  prev.task.checkAndPersist()
+  setTransformationType(TransformationType.SHUFFLED)
 
   private var userSpecifiedSerializer: Option[Serializer] = None
 
@@ -84,7 +90,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
         serializerManager.getSerializer(implicitly[ClassTag[K]], implicitly[ClassTag[V]])
       }
     }
-    List(new ShuffleDependency(prev, part, serializer, keyOrdering, aggregator, mapSideCombine))
+    List(new ShuffleDependency(prev, part, serializer, keyOrdering, aggregator, mapSideCombine,taskOfRDDWhichRequestThis = task))
   }
 
   override val partitioner = Some(part)
@@ -99,11 +105,11 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
     tracker.getPreferredLocationsForShuffle(dep, partition.index)
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[(K, C)]] = {
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
-    SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
-      .read()
-      .asInstanceOf[Iterator[(K, C)]]
+    SparkEnv.get.shuffleManager.getReader(task,dep.shuffleHandle, split.index, split.index + 1, context)
+      .read(task)
+      .asInstanceOf[Iterator[DataElement[(K, C)]]]
   }
 
   override def clearDependencies() {

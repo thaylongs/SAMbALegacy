@@ -18,10 +18,10 @@
 package org.apache.spark
 
 import java.util.{Locale, Properties}
-import java.util.concurrent.{Callable, CyclicBarrier, Executors, ExecutorService}
+import java.util.concurrent.{Callable, CyclicBarrier, ExecutorService, Executors}
 
+import br.uff.spark.{DataElement, DataflowUtils}
 import org.scalatest.Matchers
-
 import org.apache.spark.ShuffleSuite.NonJavaSerializableClass
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.rdd.{CoGroupedRDD, OrderedRDDFunctions, RDD, ShuffledRDD, SubtractedRDD}
@@ -357,28 +357,28 @@ abstract class ShuffleSuite extends SparkFunSuite with Matchers with LocalSparkC
     val taskMemoryManager = new TaskMemoryManager(sc.env.memoryManager, 0L)
     val metricsSystem = sc.env.metricsSystem
     val shuffleMapRdd = new MyRDD(sc, 1, Nil)
-    val shuffleDep = new ShuffleDependency(shuffleMapRdd, new HashPartitioner(1))
+    val shuffleDep = new ShuffleDependency(shuffleMapRdd, new HashPartitioner(1), taskOfRDDWhichRequestThis = null)
     val shuffleHandle = manager.registerShuffle(0, 1, shuffleDep)
     mapTrackerMaster.registerShuffle(0, 1)
 
     // first attempt -- its successful
     val writer1 = manager.getWriter[Int, Int](shuffleHandle, 0,
-      new TaskContextImpl(0, 0, 0L, 0, taskMemoryManager, new Properties, metricsSystem))
-    val data1 = (1 to 10).map { x => x -> x}
+      new TaskContextImpl(0, 0, 0L, 0, taskMemoryManager, new Properties, metricsSystem),null)
+    val data1 = (1 to 10).map { x => x -> x}.map(a=>DataElement.of(a))
 
     // second attempt -- also successful.  We'll write out different data,
     // just to simulate the fact that the records may get written differently
     // depending on what gets spilled, what gets combined, etc.
     val writer2 = manager.getWriter[Int, Int](shuffleHandle, 0,
-      new TaskContextImpl(0, 0, 1L, 0, taskMemoryManager, new Properties, metricsSystem))
-    val data2 = (11 to 20).map { x => x -> x}
+      new TaskContextImpl(0, 0, 1L, 0, taskMemoryManager, new Properties, metricsSystem),null)
+    val data2 = (11 to 20).map { x => x -> x}.map(a=>DataElement.of(a))
 
     // interleave writes of both attempts -- we want to test that both attempts can occur
     // simultaneously, and everything is still OK
 
     def writeAndClose(
       writer: ShuffleWriter[Int, Int])(
-      iter: Iterator[(Int, Int)]): Option[MapStatus] = {
+      iter: Iterator[DataElement[(Int, Int)]]): Option[MapStatus] = {
       val files = writer.write(iter)
       writer.stop(true)
     }
@@ -397,10 +397,10 @@ abstract class ShuffleSuite extends SparkFunSuite with Matchers with LocalSparkC
       mapTrackerMaster.registerMapOutput(0, 0, mapStatus)
     }
 
-    val reader = manager.getReader[Int, Int](shuffleHandle, 0, 1,
+    val reader = manager.getReader[Int, Int](null,shuffleHandle, 0, 1,
       new TaskContextImpl(1, 0, 2L, 0, taskMemoryManager, new Properties, metricsSystem))
-    val readData = reader.read().toIndexedSeq
-    assert(readData === data1.toIndexedSeq || readData === data2.toIndexedSeq)
+    val readData = DataflowUtils.extractFromIterator(reader.read(null)).toIndexedSeq
+    assert(readData === DataflowUtils.extractFromIterator(data1.toIterator).toIndexedSeq || readData === DataflowUtils.extractFromIterator(data2.toIterator).toIndexedSeq)
 
     manager.unregisterShuffle(0)
   }
@@ -413,10 +413,10 @@ abstract class ShuffleSuite extends SparkFunSuite with Matchers with LocalSparkC
  * process one element, before pausing to wait for the other function to "catch up".
  */
 class InterleaveIterators[T, R](
-  data1: Seq[T],
-  f1: Iterator[T] => R,
-  data2: Seq[T],
-  f2: Iterator[T] => R) {
+  data1: Seq[DataElement[T]],
+  f1: Iterator[DataElement[T]] => R,
+  data2: Seq[DataElement[T]],
+  f2: Iterator[DataElement[T]] => R) {
 
   require(data1.size == data2.size)
 

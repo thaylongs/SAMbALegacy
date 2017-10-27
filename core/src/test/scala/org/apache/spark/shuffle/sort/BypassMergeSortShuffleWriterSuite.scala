@@ -20,9 +20,10 @@ package org.apache.spark.shuffle.sort
 import java.io.File
 import java.util.UUID
 
+import br.uff.spark.DataElement
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
 import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
 import org.mockito.Matchers._
@@ -30,7 +31,6 @@ import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.scalatest.BeforeAndAfterEach
-
 import org.apache.spark._
 import org.apache.spark.executor.{ShuffleWriteMetrics, TaskMetrics}
 import org.apache.spark.serializer.{JavaSerializer, SerializerInstance, SerializerManager}
@@ -153,8 +153,8 @@ class BypassMergeSortShuffleWriterSuite extends SparkFunSuite with BeforeAndAfte
   }
 
   test("write with some empty partitions") {
-    def records: Iterator[(Int, Int)] =
-      Iterator((1, 1), (5, 5)) ++ (0 until 100000).iterator.map(x => (2, 2))
+    def records: Iterator[DataElement[(Int, Int)]] =
+      Iterator(DataElement.of((1, 1)), DataElement.of((5, 5))) ++ (0 until 100000).iterator.map(x => DataElement.of((2, 2)))
     val writer = new BypassMergeSortShuffleWriter[Int, Int](
       blockManager,
       blockResolver,
@@ -180,13 +180,13 @@ class BypassMergeSortShuffleWriterSuite extends SparkFunSuite with BeforeAndAfte
     // Using exception to test whether only non-empty partition creates temp shuffle file,
     // because temp shuffle file will only be cleaned after calling stop(false) in the failure
     // case, so we could use it to validate the temp shuffle files.
-    def records: Iterator[(Int, Int)] =
-      Iterator((1, 1), (5, 5)) ++
+    def records: Iterator[DataElement[(Int, Int)]] =
+      Iterator(DataElement.of((1, 1)), DataElement.of((5, 5))) ++
         (0 until 100000).iterator.map { i =>
           if (i == 99990) {
             throw new SparkException("intentional failure")
           } else {
-            (2, 2)
+            DataElement.of((2, 2))
           }
         }
 
@@ -225,7 +225,7 @@ class BypassMergeSortShuffleWriterSuite extends SparkFunSuite with BeforeAndAfte
         if (i == 99990) {
           throw new SparkException("Intentional failure")
         }
-        (i, i)
+        DataElement.of((i, i))
       }))
     }
     assert(temporaryFilesCreated.nonEmpty)

@@ -17,19 +17,21 @@
 
 package org.apache.spark.util.collection
 
+import br.uff.spark.{DataElement, Task}
+
 /**
  * An append-only map that keeps track of its estimated size in bytes.
  */
-private[spark] class SizeTrackingAppendOnlyMap[K, V]
-  extends AppendOnlyMap[K, V] with SizeTracker
-{
-  override def update(key: K, value: V): Unit = {
+private[spark] class SizeTrackingAppendOnlyMap[K, V](taskOfRDD: Task)
+  extends AppendOnlyMap[K, V](taskOfRDD) with SizeTracker {
+
+  override def update(key: K, value: DataElement[_ <: Any]): Unit = {
     super.update(key, value)
     super.afterUpdate()
   }
 
-  override def changeValue(key: K, updateFunc: (Boolean, V) => V): V = {
-    val newValue = super.changeValue(key, updateFunc)
+  override def changeValue(key: K, realKey: Any, dataElement: DataElement[_ <: Any], alreadyExistsDataelement: DataElement[_ <: Any], updateFunc: (Boolean, V) => V): V = {
+    val newValue = super.changeValue(key, realKey, dataElement, alreadyExistsDataelement, updateFunc)
     super.afterUpdate()
     newValue
   }

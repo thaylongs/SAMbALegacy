@@ -19,8 +19,9 @@ package org.apache.spark.rdd
 
 import java.io.{IOException, ObjectOutputStream}
 
-import scala.reflect.ClassTag
+import br.uff.spark.{DataElement, TransformationType}
 
+import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.util.Utils
 
@@ -53,6 +54,13 @@ class CartesianRDD[T: ClassTag, U: ClassTag](
   extends RDD[(T, U)](sc, Nil)
   with Serializable {
 
+  // loading dependencies
+  for (elem <- Seq(rdd1, rdd2)) {
+    task.addDepencencie(elem.task)
+    elem.task.checkAndPersist()
+  }
+  setTransformationType(TransformationType.CARTESIAN)
+
   val numPartitionsInRdd2 = rdd2.partitions.length
 
   override def getPartitions: Array[Partition] = {
@@ -70,10 +78,10 @@ class CartesianRDD[T: ClassTag, U: ClassTag](
     (rdd1.preferredLocations(currSplit.s1) ++ rdd2.preferredLocations(currSplit.s2)).distinct
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(T, U)] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[(T, U)]] = {
     val currSplit = split.asInstanceOf[CartesianPartition]
     for (x <- rdd1.iterator(currSplit.s1, context);
-         y <- rdd2.iterator(currSplit.s2, context)) yield (x, y)
+         y <- rdd2.iterator(currSplit.s2, context)) yield DataElement.of((x.value, y.value), task, task.isIgnored, x, y)
   }
 
   override def getDependencies: Seq[Dependency[_]] = List(

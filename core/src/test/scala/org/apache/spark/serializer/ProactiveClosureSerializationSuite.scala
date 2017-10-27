@@ -17,6 +17,7 @@
 
 package org.apache.spark.serializer
 
+import br.uff.spark.DataElement
 import org.apache.spark.{SharedSparkContext, SparkException, SparkFunSuite}
 import org.apache.spark.rdd.RDD
 
@@ -73,9 +74,9 @@ class ProactiveClosureSerializationSuite extends SparkFunSuite with SharedSparkC
     x.filter(y => uc.pred(y))
 
   private def xmapPartitions(x: RDD[String], uc: UnserializableClass): RDD[String] =
-    x.mapPartitions(_.map(y => uc.op(y)))
+    x.mapPartitions(_.map(y => DataElement.of(uc.op(y.value))))
 
   private def xmapPartitionsWithIndex(x: RDD[String], uc: UnserializableClass): RDD[String] =
-    x.mapPartitionsWithIndex((_, it) => it.map(y => uc.op(y)))
+    x.mapPartitionsWithIndex((_, it) => it.map(y => DataElement.of(uc.op(y.value))))
 
 }

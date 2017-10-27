@@ -21,13 +21,14 @@ import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 import java.util.{ArrayList => JArrayList}
 
+import br.uff.spark.DataElement
+
 import scala.collection.JavaConverters._
-import scala.collection.mutable
+import scala.collection.JavaConversions._
+import scala.collection.{AbstractIterator, mutable}
 import scala.util.Failure
 import scala.util.Try
-
 import net.razorvine.pickle.{Pickler, Unpickler}
-
 import org.apache.spark.SparkException
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.internal.Logging
@@ -128,31 +129,33 @@ private[spark] object SerDeUtil extends Logging {
   }
   initialize()
 
-
-  /**
+    /**
    * Convert an RDD of Java objects to Array (no recursive conversions).
    * It is only used by pyspark.sql.
    */
   def toJavaArray(jrdd: JavaRDD[Any]): JavaRDD[Array[_]] = {
-    jrdd.rdd.map {
-      case objs: JArrayList[_] =>
-        objs.toArray
-      case obj if obj.getClass.isArray =>
-        obj.asInstanceOf[Array[_]].toArray
-    }.toJavaRDD()
+    throw new UnsupportedOperationException("Dataflow - UFF - This method is not implemented yet!") //TODO  by Thaylon Guedes
+//    jrdd.rdd.map { objx =>
+//      objx.value match {
+//        case objs: JArrayList[_] =>
+//          DataElement.of(objs.asInstanceOf[Array[_]].toArray)
+//        case obj if obj.getClass.isArray =>
+//          DataElement.of(obj.asInstanceOf[Array[_]].toArray)
+//      }
+//    }.toJavaRDD()
   }
 
   /**
    * Choose batch size based on size of objects
    */
-  private[spark] class AutoBatchedPickler(iter: Iterator[Any]) extends Iterator[Array[Byte]] {
+  private[spark] class AutoBatchedPickler(iter: Iterator[Any]) extends Iterator[DataElement[Array[Byte]]] {
     private val pickle = new Pickler()
     private var batch = 1
     private val buffer = new mutable.ArrayBuffer[Any]
 
     override def hasNext: Boolean = iter.hasNext
 
-    override def next(): Array[Byte] = {
+    override def next(): DataElement[Array[Byte]] = {
       while (iter.hasNext && buffer.length < batch) {
         buffer += iter.next()
       }
@@ -165,7 +168,7 @@ private[spark] object SerDeUtil extends Logging {
         batch /= 2
       }
       buffer.clear()
-      bytes
+      DataElement.of(bytes)
     }
   }
 
@@ -181,21 +184,33 @@ private[spark] object SerDeUtil extends Logging {
    * Convert an RDD of serialized Python objects to RDD of objects, that is usable by PySpark.
    */
   def pythonToJava(pyRDD: JavaRDD[Array[Byte]], batched: Boolean): JavaRDD[Any] = {
+    def toDataElement(array: Iterator[Any]): Seq[DataElement[Any]] ={
+
+      new AbstractIterator[DataElement[Any]] {
+
+        override def hasNext: Boolean = array.hasNext
+
+        override def next(): DataElement[Any] = DataElement.of(array.next())
+
+      }.toSeq
+    }
+
     pyRDD.rdd.mapPartitions { iter =>
       initialize()
       val unpickle = new Unpickler
-      iter.flatMap { row =>
-        val obj = unpickle.loads(row)
+     var temp =  iter.flatMap { row =>
+        val obj = unpickle.loads(row.value)
         if (batched) {
           obj match {
-            case array: Array[Any] => array.toSeq
-            case _ => obj.asInstanceOf[JArrayList[_]].asScala
+            case array: Array[Any] => toDataElement(array.toIterator)
+            case _ => toDataElement(obj.asInstanceOf[JArrayList[_]].asScala.toIterator)
           }
         } else {
-          Seq(obj)
+          Seq(DataElement.of(obj)).asInstanceOf[Seq[DataElement[Any]]]
         }
       }
-    }.toJavaRDD()
+      temp
+    }.toJavaRDD().asInstanceOf[org.apache.spark.api.java.JavaRDD[Any]]
   }
 
   private def checkPickle(t: (Any, Any)): (Boolean, Boolean) = {
@@ -242,16 +257,18 @@ private[spark] object SerDeUtil extends Logging {
     }
 
     rdd.mapPartitions { iter =>
-      val cleaned = iter.map { case (k, v) =>
+      val cleaned = iter.map { obj =>
+        val k = obj.value._1
+        val v = obj.value._2
         val key = if (keyFailed) k.toString else k
         val value = if (valueFailed) v.toString else v
-        Array[Any](key, value)
+       DataElement.of( Array[Any](key, value))
       }
       if (batchSize == 0) {
         new AutoBatchedPickler(cleaned)
       } else {
         val pickle = new Pickler
-        cleaned.grouped(batchSize).map(batched => pickle.dumps(batched.asJava))
+        cleaned.grouped(batchSize).map(batched => DataElement.of(pickle.dumps(batched.asJava)))
       }
     }
   }

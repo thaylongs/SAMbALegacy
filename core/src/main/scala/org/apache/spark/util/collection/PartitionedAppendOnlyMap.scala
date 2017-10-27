@@ -19,22 +19,23 @@ package org.apache.spark.util.collection
 
 import java.util.Comparator
 
+import br.uff.spark.{DataElement, DataflowUtils, Task}
 import org.apache.spark.util.collection.WritablePartitionedPairCollection._
 
 /**
  * Implementation of WritablePartitionedPairCollection that wraps a map in which the keys are tuples
  * of (partition ID, K)
  */
-private[spark] class PartitionedAppendOnlyMap[K, V]
-  extends SizeTrackingAppendOnlyMap[(Int, K), V] with WritablePartitionedPairCollection[K, V] {
+private[spark] class PartitionedAppendOnlyMap[K, V](taskOfRDD:Task)
+  extends SizeTrackingAppendOnlyMap[(Int, K), V](taskOfRDD) with WritablePartitionedPairCollection[K, V] {
 
   def partitionedDestructiveSortedIterator(keyComparator: Option[Comparator[K]])
-    : Iterator[((Int, K), V)] = {
+    : Iterator[((Int, K), DataElement[Product2[K, V]])] = {
     val comparator = keyComparator.map(partitionKeyComparator).getOrElse(partitionComparator)
-    destructiveSortedIterator(comparator)
+    destructiveSortedIterator(comparator).asInstanceOf[Iterator[((Int, K), DataElement[Product2[K, V]])]]
   }
 
-  def insert(partition: Int, key: K, value: V): Unit = {
+  def insert(partition: Int, key: K, value: DataElement[_ <: Any]): Unit = {
     update((partition, key), value)
   }
 }

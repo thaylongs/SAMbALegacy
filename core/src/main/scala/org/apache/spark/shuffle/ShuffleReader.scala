@@ -17,12 +17,14 @@
 
 package org.apache.spark.shuffle
 
+import br.uff.spark.{DataElement, Task}
+
 /**
  * Obtained inside a reduce task to read combined records from the mappers.
  */
 private[spark] trait ShuffleReader[K, C] {
   /** Read the combined key-values for this reduce task */
-  def read(): Iterator[Product2[K, C]]
+  def read(task: Task): Iterator[DataElement[Product2[K, C]]]
 
   /**
    * Close this reader.

@@ -17,11 +17,11 @@
 
 package org.apache.spark.api.java
 
+import br.uff.spark.DataElement
+
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
-
 import org.apache.hadoop.mapreduce.InputSplit
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.api.java.JavaSparkContext._
 import org.apache.spark.api.java.function.{Function2 => JFunction2}
@@ -35,7 +35,7 @@ class JavaNewHadoopRDD[K, V](rdd: NewHadoopRDD[K, V])
   /** Maps over a partition, providing the InputSplit that was used as the base of the partition. */
   @DeveloperApi
   def mapPartitionsWithInputSplit[R](
-      f: JFunction2[InputSplit, java.util.Iterator[(K, V)], java.util.Iterator[R]],
+      f: JFunction2[InputSplit, java.util.Iterator[DataElement[(K, V)]], java.util.Iterator[DataElement[R]]],
       preservesPartitioning: Boolean = false): JavaRDD[R] = {
     new JavaRDD(rdd.mapPartitionsWithInputSplit((a, b) => f.call(a, b.asJava).asScala,
       preservesPartitioning)(fakeClassTag))(fakeClassTag)

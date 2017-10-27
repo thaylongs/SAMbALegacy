@@ -19,8 +19,9 @@ package org.apache.spark.rdd
 
 import java.sql.{Connection, ResultSet}
 
-import scala.reflect.ClassTag
+import br.uff.spark.DataElement
 
+import scala.reflect.ClassTag
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
@@ -65,6 +66,8 @@ class JdbcRDD[T: ClassTag](
     mapRow: (ResultSet) => T = JdbcRDD.resultSetToObjectArray _)
   extends RDD[T](sc, Nil) with Logging {
 
+  ignoreIt();//como isso é uma entrada de dados
+
   override def getPartitions: Array[Partition] = {
     // bounds are inclusive, hence the + 1 here and - 1 on end
     val length = BigInt(1) + upperBound - lowerBound
@@ -75,7 +78,7 @@ class JdbcRDD[T: ClassTag](
     }.toArray
   }
 
-  override def compute(thePart: Partition, context: TaskContext): Iterator[T] = new NextIterator[T]
+  override def compute(thePart: Partition, context: TaskContext): Iterator[DataElement[T]] = new NextIterator[DataElement[T]]
   {
     context.addTaskCompletionListener{ context => closeIfNeeded() }
     val part = thePart.asInstanceOf[JdbcPartition]
@@ -100,12 +103,12 @@ class JdbcRDD[T: ClassTag](
     stmt.setLong(2, part.upper)
     val rs = stmt.executeQuery()
 
-    override def getNext(): T = {
+    override def getNext(): DataElement[T] = {
       if (rs.next()) {
-        mapRow(rs)
+        DataElement.of(mapRow(rs))
       } else {
         finished = true
-        null.asInstanceOf[T]
+        null.asInstanceOf[DataElement[T]]
       }
     }
 

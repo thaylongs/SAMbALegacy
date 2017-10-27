@@ -24,14 +24,15 @@ import java.util.{Arrays, Locale, Properties, ServiceLoader, UUID}
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 
+import br.uff.spark.{DataElement, DataflowUtils, TransformationType}
+
 import scala.collection.JavaConverters._
 import scala.collection.Map
 import scala.collection.generic.Growable
 import scala.collection.mutable.HashMap
 import scala.language.implicitConversions
-import scala.reflect.{classTag, ClassTag}
+import scala.reflect.{ClassTag, classTag}
 import scala.util.control.NonFatal
-
 import com.google.common.collect.MapMaker
 import org.apache.commons.lang3.SerializationUtils
 import org.apache.hadoop.conf.Configuration
@@ -40,7 +41,6 @@ import org.apache.hadoop.io.{ArrayWritable, BooleanWritable, BytesWritable, Doub
 import org.apache.hadoop.mapred.{FileInputFormat, InputFormat, JobConf, SequenceFileInputFormat, TextInputFormat}
 import org.apache.hadoop.mapreduce.{InputFormat => NewInputFormat, Job => NewHadoopJob}
 import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat => NewFileInputFormat}
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.{LocalSparkCluster, SparkHadoopUtil}
@@ -743,7 +743,7 @@ class SparkContext(config: SparkConf) extends Logging {
         (safeEnd - safeStart) / step + 1
       }
     }
-    parallelize(0 until numSlices, numSlices).mapPartitionsWithIndex { (i, _) =>
+    parallelize(0 until numSlices, numSlices).ignoreIt().mapPartitionsWithIndex { (i, _) =>
       val partitionStart = (i * numElements) / numSlices * step + start
       val partitionEnd = (((i + 1) * numElements) / numSlices) * step + start
       def getSafeMargin(bi: BigInt): Long =
@@ -757,7 +757,7 @@ class SparkContext(config: SparkConf) extends Logging {
       val safePartitionStart = getSafeMargin(partitionStart)
       val safePartitionEnd = getSafeMargin(partitionEnd)
 
-      new Iterator[Long] {
+      new Iterator[DataElement[Long]] {
         private[this] var number: Long = safePartitionStart
         private[this] var overflow: Boolean = false
 
@@ -779,10 +779,10 @@ class SparkContext(config: SparkConf) extends Logging {
             // back, we are pretty sure that we have an overflow.
             overflow = true
           }
-          ret
+          DataElement.of(ret)
         }
       }
-    }
+    }.setTransformationType(TransformationType.RANGE)
   }
 
   /** Distribute a local Scala collection to form an RDD.
@@ -823,7 +823,8 @@ class SparkContext(config: SparkConf) extends Logging {
       minPartitions: Int = defaultMinPartitions): RDD[String] = withScope {
     assertNotStopped()
     hadoopFile(path, classOf[TextInputFormat], classOf[LongWritable], classOf[Text],
-      minPartitions).map(pair => pair._2.toString).setName(path)
+      minPartitions).ignoreIt().map(pair => pair._2.toString).setName(s"split lines of file: '$path'")
+      .setTransformationType(TransformationType.MAP)
   }
 
   /**
@@ -1308,7 +1309,7 @@ class SparkContext(config: SparkConf) extends Logging {
   def union[T: ClassTag](rdds: Seq[RDD[T]]): RDD[T] = withScope {
     val partitioners = rdds.flatMap(_.partitioner).toSet
     if (rdds.forall(_.partitioner.isDefined) && partitioners.size == 1) {
-      new PartitionerAwareUnionRDD(this, rdds)
+      new PartitionerAwareUnionRDD(this, rdds).setTransformationType(TransformationType.UNION)
     } else {
       new UnionRDD(this, rdds)
     }
@@ -2009,9 +2010,10 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   def runJob[T, U: ClassTag](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[DataElement[T]]) => U,
       partitions: Seq[Int],
       resultHandler: (Int, U) => Unit): Unit = {
+    rdd.task.checkAndPersist()
     if (stopped.get()) {
       throw new IllegalStateException("SparkContext has been shutdown")
     }
@@ -2039,7 +2041,7 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   def runJob[T, U: ClassTag](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[DataElement[T]]) => U,
       partitions: Seq[Int]): Array[U] = {
     val results = new Array[U](partitions.size)
     runJob[T, U](rdd, func, partitions, (index, res) => results(index) = res)
@@ -2058,10 +2060,10 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   def runJob[T, U: ClassTag](
       rdd: RDD[T],
-      func: Iterator[T] => U,
+      func: Iterator[DataElement[T]] => U,
       partitions: Seq[Int]): Array[U] = {
     val cleanedFunc = clean(func)
-    runJob(rdd, (ctx: TaskContext, it: Iterator[T]) => cleanedFunc(it), partitions)
+    runJob(rdd, (ctx: TaskContext, it: Iterator[DataElement[T]]) => cleanedFunc(it), partitions)
   }
 
   /**
@@ -2073,7 +2075,7 @@ class SparkContext(config: SparkConf) extends Logging {
    * @return in-memory collection with a result of the job (each collection element will contain
    * a result from one partition)
    */
-  def runJob[T, U: ClassTag](rdd: RDD[T], func: (TaskContext, Iterator[T]) => U): Array[U] = {
+  def runJob[T, U: ClassTag](rdd: RDD[T], func: (TaskContext, Iterator[DataElement[T]]) => U): Array[U] = {
     runJob(rdd, func, 0 until rdd.partitions.length)
   }
 
@@ -2085,7 +2087,7 @@ class SparkContext(config: SparkConf) extends Logging {
    * @return in-memory collection with a result of the job (each collection element will contain
    * a result from one partition)
    */
-  def runJob[T, U: ClassTag](rdd: RDD[T], func: Iterator[T] => U): Array[U] = {
+  def runJob[T, U: ClassTag](rdd: RDD[T], func: Iterator[DataElement[T]] => U): Array[U] = {
     runJob(rdd, func, 0 until rdd.partitions.length)
   }
 
@@ -2099,7 +2101,7 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   def runJob[T, U: ClassTag](
     rdd: RDD[T],
-    processPartition: (TaskContext, Iterator[T]) => U,
+    processPartition: (TaskContext, Iterator[DataElement[T]]) => U,
     resultHandler: (Int, U) => Unit)
   {
     runJob[T, U](rdd, processPartition, 0 until rdd.partitions.length, resultHandler)
@@ -2114,10 +2116,10 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   def runJob[T, U: ClassTag](
       rdd: RDD[T],
-      processPartition: Iterator[T] => U,
+      processPartition: Iterator[DataElement[T]] => U,
       resultHandler: (Int, U) => Unit)
   {
-    val processFunc = (context: TaskContext, iter: Iterator[T]) => processPartition(iter)
+    val processFunc = (context: TaskContext, iter: Iterator[DataElement[T]]) => processPartition(iter)
     runJob[T, U](rdd, processFunc, 0 until rdd.partitions.length, resultHandler)
   }
 
@@ -2135,7 +2137,7 @@ class SparkContext(config: SparkConf) extends Logging {
   @DeveloperApi
   def runApproximateJob[T, U, R](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[DataElement[T]]) => U,
       evaluator: ApproximateEvaluator[U, R],
       timeout: Long): PartialResult[R] = {
     assertNotStopped()
@@ -2162,7 +2164,7 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   def submitJob[T, U, R](
       rdd: RDD[T],
-      processPartition: Iterator[T] => U,
+      processPartition: Iterator[DataElement[T]] => U,
       partitions: Seq[Int],
       resultHandler: (Int, U) => Unit,
       resultFunc: => R): SimpleFutureAction[R] =
@@ -2172,7 +2174,7 @@ class SparkContext(config: SparkConf) extends Logging {
     val callSite = getCallSite
     val waiter = dagScheduler.submitJob(
       rdd,
-      (context: TaskContext, iter: Iterator[T]) => cleanF(iter),
+      (context: TaskContext, iter: Iterator[DataElement[T]]) => cleanF(iter),
       partitions,
       callSite,
       resultHandler,

@@ -22,18 +22,18 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 
+import br.uff.spark.DataElement
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
-
 import com.google.common.io.ByteStreams
 import org.apache.commons.io.FileUtils
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileStatus, FSDataInputStream, Path}
+import org.apache.hadoop.fs.{FSDataInputStream, FileStatus, Path}
 import org.scalatest.{BeforeAndAfterEach, Matchers}
 import org.scalatest.concurrent.TimeLimits
 import org.scalatest.time.SpanSugar._
-
 import org.apache.spark._
 import org.apache.spark.TestUtils.JavaSourceFromString
 import org.apache.spark.api.r.RUtils
@@ -958,7 +958,7 @@ object JarCreationTest extends Logging {
           exception = t + "\n" + Utils.exceptionString(t)
           exception = exception.replaceAll("\n", "\n\t")
       }
-      Option(exception).toSeq.iterator
+      Option(exception).toSeq.map(a=>DataElement.of(a)).iterator
     }.collect()
     if (result.nonEmpty) {
       throw new Exception("Could not load user class from jar:\n" + result(0))

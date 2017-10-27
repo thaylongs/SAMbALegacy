@@ -19,7 +19,6 @@ package org.apache.spark.api.java
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
 import org.apache.spark.api.java.function.{Function => JFunction}

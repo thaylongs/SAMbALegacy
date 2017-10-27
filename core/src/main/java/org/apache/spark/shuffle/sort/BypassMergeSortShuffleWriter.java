@@ -23,6 +23,8 @@ import java.nio.channels.FileChannel;
 import static java.nio.file.StandardOpenOption.*;
 import javax.annotation.Nullable;
 
+import br.uff.spark.DataElement;
+import org.apache.spark.util.MutablePair;
 import scala.None$;
 import scala.Option;
 import scala.Product2;
@@ -118,7 +120,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   @Override
-  public void write(Iterator<Product2<K, V>> records) throws IOException {
+  public void write(Iterator<DataElement<? extends Product2<K, V>>> records) throws IOException {
     assert (partitionWriters == null);
     if (!records.hasNext()) {
       partitionLengths = new long[numPartitions];
@@ -142,11 +144,14 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     // the disk, and can take a long time in aggregate when we open many files, so should be
     // included in the shuffle write time.
     writeMetrics.incWriteTime(System.nanoTime() - openStartTime);
-
     while (records.hasNext()) {
-      final Product2<K, V> record = records.next();
-      final K key = record._1();
-      partitionWriters[partitioner.getPartition(key)].write(key, record._2());
+      DataElement<? extends Product2<K, V>> record = records.next();
+      final K key = record.value()._1();
+      if(record.value() instanceof MutablePair){
+        final V value = record.value()._2();
+        record = record.cloneWithNewValue(new Tuple2<>(key, value));
+      }
+      partitionWriters[partitioner.getPartition(key)].write(key, record);
     }
 
     for (int i = 0; i < numPartitions; i++) {

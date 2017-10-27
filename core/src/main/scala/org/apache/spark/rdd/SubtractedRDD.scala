@@ -19,10 +19,11 @@ package org.apache.spark.rdd
 
 import java.util.{HashMap => JHashMap}
 
+import br.uff.spark.DataElement
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
 import org.apache.spark.Dependency
 import org.apache.spark.OneToOneDependency
 import org.apache.spark.Partition
@@ -53,6 +54,12 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
     part: Partitioner)
   extends RDD[(K, V)](rdd1.context, Nil) {
 
+  // loading dependencies
+  task.addDepencencie(rdd1)
+  task.addDepencencie(rdd2)
+  rdd1.task.checkAndPersist()
+  rdd2.task.checkAndPersist()
+
 
   override def getDependencies: Seq[Dependency[_]] = {
     def rddDependency[T1: ClassTag, T2: ClassTag](rdd: RDD[_ <: Product2[T1, T2]])
@@ -62,7 +69,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
         new OneToOneDependency(rdd)
       } else {
         logDebug("Adding shuffle dependency with " + rdd)
-        new ShuffleDependency[T1, T2, Any](rdd, part)
+        new ShuffleDependency[T1, T2, Any](rdd, part, taskOfRDDWhichRequestThis = task)
       }
     }
     Seq(rddDependency[K, V](rdd1), rddDependency[K, W](rdd2))
@@ -86,7 +93,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
 
   override val partitioner = Some(part)
 
-  override def compute(p: Partition, context: TaskContext): Iterator[(K, V)] = {
+  override def compute(p: Partition, context: TaskContext): Iterator[DataElement[(K, V)]] = {
     val partition = p.asInstanceOf[CoGroupPartition]
     val map = new JHashMap[K, ArrayBuffer[V]]
     def getSeq(k: K): ArrayBuffer[V] = {
@@ -99,27 +106,27 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
         seq
       }
     }
-    def integrate(depNum: Int, op: Product2[K, V] => Unit): Unit = {
+    def integrate(depNum: Int, op: DataElement[Product2[K, V]] => Unit): Unit = {
       dependencies(depNum) match {
         case oneToOneDependency: OneToOneDependency[_] =>
           val dependencyPartition = partition.narrowDeps(depNum).get.split
           oneToOneDependency.rdd.iterator(dependencyPartition, context)
-            .asInstanceOf[Iterator[Product2[K, V]]].foreach(op)
+            .asInstanceOf[Iterator[DataElement[Product2[K, V]]]].foreach(op)
 
         case shuffleDependency: ShuffleDependency[_, _, _] =>
           val iter = SparkEnv.get.shuffleManager
-            .getReader(
+            .getReader(task,
               shuffleDependency.shuffleHandle, partition.index, partition.index + 1, context)
-            .read()
-          iter.foreach(op)
+            .read(task)
+          iter.asInstanceOf[Iterator[DataElement[Product2[K, V]]]].foreach(op)
       }
     }
 
     // the first dep is rdd1; add all values to the map
-    integrate(0, t => getSeq(t._1) += t._2)
+    integrate(0, t => getSeq(t.value._1) += t.value._2)
     // the second dep is rdd2; remove all of its keys
-    integrate(1, t => map.remove(t._1))
-    map.asScala.iterator.map(t => t._2.iterator.map((t._1, _))).flatten
+    integrate(1, t => map.remove(t.value._1))
+    map.asScala.iterator.map(t => t._2.iterator.map(obj=>DataElement.of((t._1, obj)))).flatten
   }
 
   override def clearDependencies() {

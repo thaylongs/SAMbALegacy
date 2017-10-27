@@ -19,8 +19,8 @@ package org.apache.spark.util.collection
 
 import java.util.Comparator
 
+import br.uff.spark.{DataElement, Task}
 import com.google.common.hash.Hashing
-
 import org.apache.spark.annotation.DeveloperApi
 
 /**
@@ -37,9 +37,8 @@ import org.apache.spark.annotation.DeveloperApi
  * TODO: Cache the hash values of each key? java.util.HashMap does that.
  */
 @DeveloperApi
-class AppendOnlyMap[K, V](initialCapacity: Int = 64)
-  extends Iterable[(K, V)] with Serializable {
-
+class AppendOnlyMap[K, V](taskOfRDD:Task, initialCapacity: Int = 64)
+  extends Iterable[DataElement[(K, V)]] with Serializable {
   import AppendOnlyMap._
 
   require(initialCapacity <= MAXIMUM_CAPACITY,
@@ -59,7 +58,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
 
   // Treat the null key differently so we can use nulls in "data" to represent empty items.
   private var haveNullValue = false
-  private var nullValue: V = null.asInstanceOf[V]
+  private var nullValue: DataElement[(Any, V)] = null.asInstanceOf[DataElement[(Any, V)]]
 
   // Triggered by destructiveSortedIterator; the underlying data array may no longer be used
   private var destroyed = false
@@ -70,14 +69,14 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
     assert(!destroyed, destructionMessage)
     val k = key.asInstanceOf[AnyRef]
     if (k.eq(null)) {
-      return nullValue
+      return if (nullValue == null) null.asInstanceOf[V] else nullValue.value._2
     }
     var pos = rehash(k.hashCode) & mask
     var i = 1
     while (true) {
       val curKey = data(2 * pos)
       if (k.eq(curKey) || k.equals(curKey)) {
-        return data(2 * pos + 1).asInstanceOf[V]
+        return data(2 * pos + 1).asInstanceOf[DataElement[(Any, V)]].value._2
       } else if (curKey.eq(null)) {
         return null.asInstanceOf[V]
       } else {
@@ -90,14 +89,14 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   }
 
   /** Set the value for a key */
-  def update(key: K, value: V): Unit = {
+  def update(key: K, value: DataElement[_<:Any]): Unit = {
     assert(!destroyed, destructionMessage)
     val k = key.asInstanceOf[AnyRef]
     if (k.eq(null)) {
       if (!haveNullValue) {
         incrementSize()
       }
-      nullValue = value
+      nullValue = value.asInstanceOf[DataElement[(Any, V)]]
       haveNullValue = true
       return
     }
@@ -125,16 +124,31 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
    * Set the value for key to updateFunc(hadValue, oldValue), where oldValue will be the old value
    * for key, if any, or null otherwise. Returns the newly updated value.
    */
-  def changeValue(key: K, updateFunc: (Boolean, V) => V): V = {
+  def changeValue(key: K, realKey: Any, dataElement: DataElement[_ <: Any], alreadyExistsDataelement: DataElement[_ <: Any], updateFunc: (Boolean, V) => V): V = {
     assert(!destroyed, destructionMessage)
     val k = key.asInstanceOf[AnyRef]
     if (k.eq(null)) {
       if (!haveNullValue) {
         incrementSize()
       }
-      nullValue = updateFunc(haveNullValue, nullValue)
+      if (nullValue == null) {
+        val newValue = updateFunc(haveNullValue, null.asInstanceOf[V])
+        nullValue = if (alreadyExistsDataelement != null)
+          alreadyExistsDataelement.updateValue((realKey, newValue)).asInstanceOf[DataElement[(Any, V)]]
+        else
+          DataElement.of((realKey, newValue), dataElement, taskOfRDD, taskOfRDD.isIgnored)
+      } else {
+        val newValue = updateFunc(haveNullValue, nullValue.value._2)
+        nullValue.updateValue((realKey, newValue)) // Possivel gerador de lixo  UFF
+        if (alreadyExistsDataelement == null) {
+          nullValue.addDepencencie(dataElement)
+        } else {
+          nullValue.addDepencencie(alreadyExistsDataelement.dependenciesIDS.iterator)
+          alreadyExistsDataelement.deleteIt()
+        }
+      }
       haveNullValue = true
-      return nullValue
+      return nullValue.value._2
     }
     var pos = rehash(k.hashCode) & mask
     var i = 1
@@ -143,12 +157,22 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
       if (curKey.eq(null)) {
         val newValue = updateFunc(false, null.asInstanceOf[V])
         data(2 * pos) = k
-        data(2 * pos + 1) = newValue.asInstanceOf[AnyRef]
+        data(2 * pos + 1) = if (alreadyExistsDataelement != null)
+          alreadyExistsDataelement.updateValue((realKey, newValue))
+        else
+          DataElement.of((realKey, newValue), dataElement, taskOfRDD, taskOfRDD.isIgnored)
         incrementSize()
         return newValue
       } else if (k.eq(curKey) || k.equals(curKey)) {
-        val newValue = updateFunc(true, data(2 * pos + 1).asInstanceOf[V])
-        data(2 * pos + 1) = newValue.asInstanceOf[AnyRef]
+        val entry: DataElement[(Any, V)] = data(2 * pos + 1).asInstanceOf[DataElement[(Any, V)]]
+        val newValue = updateFunc(true, entry.value._2)
+        entry.updateValue((realKey, newValue)) // Possivel gerador de lixo  UFF
+        if (alreadyExistsDataelement == null) {
+          entry.addDepencencie(dataElement)
+        } else {
+          entry.addDepencencie(alreadyExistsDataelement.dependenciesIDS.iterator)
+          alreadyExistsDataelement.deleteIt()
+        }
         return newValue
       } else {
         val delta = i
@@ -160,22 +184,22 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   }
 
   /** Iterator method from Iterable */
-  override def iterator: Iterator[(K, V)] = {
+  override def iterator: Iterator[DataElement[(K, V)]] = {
     assert(!destroyed, destructionMessage)
-    new Iterator[(K, V)] {
+    new Iterator[DataElement[(K, V)]] {
       var pos = -1
 
       /** Get the next value we should return from next(), or null if we're finished iterating */
-      def nextValue(): (K, V) = {
+      def nextValue(): DataElement[(K, V)] = {
         if (pos == -1) {    // Treat position -1 as looking at the null value
           if (haveNullValue) {
-            return (null.asInstanceOf[K], nullValue)
+            return nullValue.asInstanceOf[DataElement[(K, V)]]
           }
           pos += 1
         }
         while (pos < capacity) {
           if (!data(2 * pos).eq(null)) {
-            return (data(2 * pos).asInstanceOf[K], data(2 * pos + 1).asInstanceOf[V])
+            return data(2 * pos + 1).asInstanceOf[DataElement[(K, V)]]
           }
           pos += 1
         }
@@ -184,7 +208,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
 
       override def hasNext: Boolean = nextValue() != null
 
-      override def next(): (K, V) = {
+      override def next(): DataElement[(K, V)] = {
         val value = nextValue()
         if (value == null) {
           throw new NoSuchElementException("End of iterator")
@@ -280,7 +304,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
       def next(): (K, V) = {
         if (nullValueReady) {
           nullValueReady = false
-          (null.asInstanceOf[K], nullValue)
+          (nullValue.value._1.asInstanceOf[K], nullValue.asInstanceOf[V])
         } else {
           val item = (data(2 * i).asInstanceOf[K], data(2 * i + 1).asInstanceOf[V])
           i += 1

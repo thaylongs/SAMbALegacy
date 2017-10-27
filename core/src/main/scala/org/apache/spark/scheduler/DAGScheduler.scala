@@ -22,6 +22,8 @@ import java.util.Properties
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+import br.uff.spark.DataElement
+
 import scala.annotation.tailrec
 import scala.collection.Map
 import scala.collection.mutable.{HashMap, HashSet, Stack}
@@ -29,9 +31,7 @@ import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.SerializationUtils
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
@@ -579,7 +579,7 @@ class DAGScheduler(
    */
   def submitJob[T, U](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[DataElement[T]]) => U,
       partitions: Seq[Int],
       callSite: CallSite,
       resultHandler: (Int, U) => Unit,
@@ -623,7 +623,7 @@ class DAGScheduler(
    */
   def runJob[T, U](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[DataElement[T]]) => U,
       partitions: Seq[Int],
       callSite: CallSite,
       resultHandler: (Int, U) => Unit,
@@ -658,7 +658,7 @@ class DAGScheduler(
    */
   def runApproximateJob[T, U, R](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[DataElement[T]]) => U,
       evaluator: ApproximateEvaluator[U, R],
       callSite: CallSite,
       timeout: Long,

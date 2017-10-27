@@ -21,9 +21,10 @@ import java.io.File
 import java.util.Date
 import java.util.concurrent.TimeoutException
 
+import br.uff.spark.DataElement
+
 import scala.concurrent.duration._
 import scala.language.postfixOps
-
 import org.apache.hadoop.mapred._
 import org.apache.hadoop.mapreduce.TaskType
 import org.mockito.Matchers
@@ -31,7 +32,6 @@ import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.scalatest.BeforeAndAfter
-
 import org.apache.spark._
 import org.apache.spark.internal.io.{FileCommitProtocol, HadoopMapRedCommitProtocol, SparkHadoopWriterUtils}
 import org.apache.spark.rdd.{FakeOutputCommitter, RDD}
@@ -232,19 +232,19 @@ private case class OutputCommitFunctions(tempDirPath: String) {
     }
   }
 
-  def commitSuccessfully(iter: Iterator[Int]): Unit = {
+  def commitSuccessfully(iter: Iterator[DataElement[Int]]): Unit = {
     val ctx = TaskContext.get()
     runCommitWithProvidedCommitter(ctx, iter, successfulOutputCommitter)
   }
 
-  def failFirstCommitAttempt(iter: Iterator[Int]): Unit = {
+  def failFirstCommitAttempt(iter: Iterator[DataElement[Int]]): Unit = {
     val ctx = TaskContext.get()
     runCommitWithProvidedCommitter(ctx, iter,
       if (ctx.attemptNumber == 0) failingOutputCommitter else successfulOutputCommitter)
   }
 
   // Receiver should be idempotent for AskPermissionToCommitOutput
-  def callCanCommitMultipleTimes(iter: Iterator[Int]): Unit = {
+  def callCanCommitMultipleTimes(iter: Iterator[DataElement[Int]]): Unit = {
     val ctx = TaskContext.get()
     val canCommit1 = SparkEnv.get.outputCommitCoordinator
       .canCommit(ctx.stageId(), ctx.partitionId(), ctx.attemptNumber())
@@ -255,7 +255,7 @@ private case class OutputCommitFunctions(tempDirPath: String) {
 
   private def runCommitWithProvidedCommitter(
       ctx: TaskContext,
-      iter: Iterator[Int],
+      iter: Iterator[DataElement[Int]],
       outputCommitter: OutputCommitter): Unit = {
     def jobConf = new JobConf {
       override def getOutputCommitter(): OutputCommitter = outputCommitter

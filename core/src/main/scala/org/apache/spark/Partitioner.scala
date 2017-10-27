@@ -19,11 +19,12 @@ package org.apache.spark
 
 import java.io.{IOException, ObjectInputStream, ObjectOutputStream}
 
+import br.uff.spark.{DataElement, DataflowUtils}
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 import scala.util.hashing.byteswap32
-
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
 import org.apache.spark.serializer.JavaSerializer
 import org.apache.spark.util.{CollectionsUtils, Utils}
@@ -258,12 +259,12 @@ private[spark] object RangePartitioner {
       sampleSizePerPartition: Int): (Long, Array[(Int, Long, Array[K])]) = {
     val shift = rdd.id
     // val classTagK = classTag[K] // to avoid serializing the entire partitioner object
-    val sketched = rdd.mapPartitionsWithIndex { (idx, iter) =>
+    val sketched = rdd.mapPartitionsWithIndexWithTask { (idx, iter, task) =>
       val seed = byteswap32(idx ^ (shift << 16))
       val (sample, n) = SamplingUtils.reservoirSampleAndCount(
         iter, sampleSizePerPartition, seed)
-      Iterator((idx, n, sample))
-    }.collect()
+      Iterator(DataElement.of((idx, n, DataflowUtils.extractFromIterator(sample.toIterator).toArray),task,task.isIgnored))
+    }.ignoreIt().collect()
     val numItems = sketched.map(_._2).sum
     (numItems, sketched)
   }

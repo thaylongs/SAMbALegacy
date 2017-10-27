@@ -19,12 +19,13 @@ package org.apache.spark.rdd
 
 import java.io._
 
+import br.uff.spark.{DataElement, Task}
+
 import scala.Serializable
-import scala.collection.Map
+import scala.collection.{AbstractIterator, Map}
 import scala.collection.immutable.NumericRange
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.serializer.JavaSerializer
 import org.apache.spark.util.Utils
@@ -32,10 +33,18 @@ import org.apache.spark.util.Utils
 private[spark] class ParallelCollectionPartition[T: ClassTag](
     var rddId: Long,
     var slice: Int,
-    var values: Seq[T]
+    var values: Seq[T],
+    task: Task
   ) extends Partition with Serializable {
 
-  def iterator: Iterator[T] = values.iterator
+  def iterator: Iterator[DataElement[T]] = new AbstractIterator[DataElement[T]] {
+
+    val localIter = values.iterator
+
+    override def hasNext: Boolean = localIter.hasNext
+
+    override def next(): DataElement[T] = DataElement.of(localIter.next(), task, false)
+  }
 
   override def hashCode(): Int = (41 * (41 + rddId) + slice).toInt
 
@@ -93,12 +102,14 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
   // instead.
   // UPDATE: A parallel collection can be checkpointed to HDFS, which achieves this goal.
 
+  this.ignoreIt()
+
   override def getPartitions: Array[Partition] = {
     val slices = ParallelCollectionRDD.slice(data, numSlices).toArray
-    slices.indices.map(i => new ParallelCollectionPartition(id, i, slices(i))).toArray
+    slices.indices.map(i => new ParallelCollectionPartition(id, i, slices(i),task)).toArray
   }
 
-  override def compute(s: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(s: Partition, context: TaskContext): Iterator[DataElement[T]] = {
     new InterruptibleIterator(context, s.asInstanceOf[ParallelCollectionPartition[T]].iterator)
   }
 

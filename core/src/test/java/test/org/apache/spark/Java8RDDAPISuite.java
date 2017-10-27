@@ -21,7 +21,9 @@ import java.io.File;
 import java.io.Serializable;
 import java.util.*;
 
+import br.uff.spark.Task;
 import scala.Tuple2;
+import br.uff.spark.DataElement;
 
 import com.google.common.collect.Iterables;
 import com.google.common.io.Files;
@@ -235,9 +237,9 @@ public class Java8RDDAPISuite implements Serializable {
     JavaRDD<Integer> partitionSums = rdd.mapPartitions(iter -> {
       int sum = 0;
       while (iter.hasNext()) {
-        sum += iter.next();
+        sum += iter.next().value();
       }
-      return Collections.singletonList(sum).iterator();
+      return Collections.singletonList(DataElement.of(sum)).iterator();
     });
 
     Assert.assertEquals("[3, 7]", partitionSums.collect().toString());
@@ -277,8 +279,8 @@ public class Java8RDDAPISuite implements Serializable {
   public void zipPartitions() {
     JavaRDD<Integer> rdd1 = sc.parallelize(Arrays.asList(1, 2, 3, 4, 5, 6), 2);
     JavaRDD<String> rdd2 = sc.parallelize(Arrays.asList("1", "2", "3", "4"), 2);
-    FlatMapFunction2<Iterator<Integer>, Iterator<String>, Integer> sizesFn =
-      (Iterator<Integer> i, Iterator<String> s) -> {
+    FlatMapFunction3<Iterator<DataElement<Integer>>, Iterator<DataElement<String>>, Task,DataElement<Integer>> sizesFn =
+      (Iterator<DataElement<Integer>> i, Iterator<DataElement<String>> s, Task task) -> {
         int sizeI = 0;
         while (i.hasNext()) {
           sizeI += 1;
@@ -289,7 +291,7 @@ public class Java8RDDAPISuite implements Serializable {
           sizeS += 1;
           s.next();
         }
-        return Arrays.asList(sizeI, sizeS).iterator();
+        return Arrays.asList(DataElement.of(sizeI), DataElement.of(sizeS)).iterator();
       };
     JavaRDD<Integer> sizes = rdd1.zipPartitions(rdd2, sizesFn);
     Assert.assertEquals("[3, 2, 3, 2]", sizes.collect().toString());

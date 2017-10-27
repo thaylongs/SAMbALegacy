@@ -17,6 +17,7 @@
 
 package org.apache.spark.shuffle
 
+import br.uff.spark.Task
 import org.apache.spark.{ShuffleDependency, TaskContext}
 
 /**
@@ -38,13 +39,14 @@ private[spark] trait ShuffleManager {
       dependency: ShuffleDependency[K, V, C]): ShuffleHandle
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
-  def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext): ShuffleWriter[K, V]
+  def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext, taskOfRDD:Task): ShuffleWriter[K, V]
 
   /**
    * Get a reader for a range of reduce partitions (startPartition to endPartition-1, inclusive).
    * Called on executors by reduce tasks.
    */
   def getReader[K, C](
+      task:Task,
       handle: ShuffleHandle,
       startPartition: Int,
       endPartition: Int,

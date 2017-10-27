@@ -19,8 +19,9 @@ package org.apache.spark.ui
 
 import java.util.concurrent.Semaphore
 
-import scala.util.Random
+import br.uff.spark.DataElement
 
+import scala.util.Random
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.scheduler.SchedulingMode
 
@@ -76,7 +77,7 @@ private[spark] object UIWorkloadGenerator {
           if (nextFloat() < probFailure) {
             throw new Exception("This is a task failure")
           }
-          1
+          DataElement.of(1)
         }.count
       }),
       ("Partially failed phase (longer tasks)", {
@@ -86,10 +87,10 @@ private[spark] object UIWorkloadGenerator {
             Thread.sleep(100)
             throw new Exception("This is a task failure")
           }
-          1
+          DataElement.of(1)
         }.count
       }),
-      ("Job with delays", baseData.map(x => Thread.sleep(100)).count)
+      ("Job with delays", baseData.map(x => DataElement.of(Thread.sleep(100))).count)
     )
 
     val barrier = new Semaphore(-nJobSet * jobs.size + 1)

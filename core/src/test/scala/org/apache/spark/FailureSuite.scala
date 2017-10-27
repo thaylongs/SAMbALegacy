@@ -234,7 +234,7 @@ class FailureSuite extends SparkFunSuite with LocalSparkContext {
       }
       (x, x)
     }
-    val dep = new ShuffleDependency[Int, Int, Int](rdd, new HashPartitioner(2))
+    val dep = new ShuffleDependency[Int, Int, Int](rdd, new HashPartitioner(2),taskOfRDDWhichRequestThis = null)
     sc.submitMapStage(dep).get()
     FailureSuiteState.synchronized {
       assert(FailureSuiteState.tasksRun === 4)

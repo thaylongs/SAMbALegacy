@@ -21,11 +21,11 @@ import java.{util => ju}
 import java.io.{DataInput, DataOutput}
 import java.nio.charset.StandardCharsets
 
-import scala.collection.JavaConverters._
+import br.uff.spark.DataElement
 
+import scala.collection.JavaConverters._
 import org.apache.hadoop.io._
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat
-
 import org.apache.spark.SparkException
 import org.apache.spark.api.java.JavaSparkContext
 

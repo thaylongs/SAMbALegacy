@@ -384,7 +384,12 @@
       <artifactId>libfb303</artifactId>
       <scope>provided</scope>
     </dependency>
-
+    <!-- Cassandra -->
+    <dependency>
+      <groupId>com.datastax.cassandra</groupId>
+      <artifactId>cassandra-driver-core</artifactId>
+      <version>3.3.0</version>
+    </dependency>
   </dependencies>
   <build>
     <outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory>

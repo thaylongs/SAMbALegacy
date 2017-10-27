@@ -19,11 +19,12 @@ package org.apache.spark.rdd
 
 import java.io.{IOException, ObjectOutputStream}
 
+import br.uff.spark.{DataElement, TransformationType}
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.existentials
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.util.Utils
 
@@ -78,6 +79,11 @@ private[spark] class CoalescedRDD[T: ClassTag](
     partitionCoalescer: Option[PartitionCoalescer] = None)
   extends RDD[T](prev.context, Nil) {  // Nil since we implement getDependencies
 
+  setTransformationType(TransformationType.COALESCED)
+  task.addDepencencie(prev)
+  prev.task.checkAndPersist()
+
+
   require(maxPartitions > 0 || maxPartitions == prev.partitions.length,
     s"Number of partitions ($maxPartitions) must be positive.")
   if (partitionCoalescer.isDefined) {
@@ -95,7 +101,7 @@ private[spark] class CoalescedRDD[T: ClassTag](
     }
   }
 
-  override def compute(partition: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(partition: Partition, context: TaskContext): Iterator[DataElement[T]] = {
     partition.asInstanceOf[CoalescedRDDPartition].parents.iterator.flatMap { parentPartition =>
       firstParent[T].iterator(parentPartition, context)
     }

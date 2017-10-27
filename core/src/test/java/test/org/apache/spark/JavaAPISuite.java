@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 
+import br.uff.spark.Task;
 import org.apache.spark.Accumulator;
 import org.apache.spark.AccumulatorParam;
 import org.apache.spark.Partitioner;
@@ -77,6 +78,8 @@ import org.apache.spark.serializer.KryoSerializer;
 import org.apache.spark.storage.StorageLevel;
 import org.apache.spark.util.LongAccumulator;
 import org.apache.spark.util.StatCounter;
+
+import br.uff.spark.DataElement;
 
 // The test suite itself is Serializable so that anonymous Function implementations can be
 // serialized, as an alternative to converting these anonymous classes to static inner classes;
@@ -820,9 +823,9 @@ public class JavaAPISuite implements Serializable {
     JavaRDD<Integer> partitionSums = rdd.mapPartitions(iter -> {
         int sum = 0;
         while (iter.hasNext()) {
-          sum += iter.next();
+          sum += iter.next().value();
         }
-        return Collections.singletonList(sum).iterator();
+        return Collections.singletonList(DataElement.of(sum)).iterator();
       });
     assertEquals("[3, 7]", partitionSums.collect().toString());
   }
@@ -834,9 +837,9 @@ public class JavaAPISuite implements Serializable {
     JavaRDD<Integer> partitionSums = rdd.mapPartitionsWithIndex((index, iter) -> {
         int sum = 0;
         while (iter.hasNext()) {
-          sum += iter.next();
+          sum += iter.next().value();
         }
-        return Collections.singletonList(sum).iterator();
+        return Collections.singletonList(DataElement.of(sum)).iterator();
       }, false);
     assertEquals("[3, 7]", partitionSums.collect().toString());
   }
@@ -903,7 +906,7 @@ public class JavaAPISuite implements Serializable {
   public void iterator() {
     JavaRDD<Integer> rdd = sc.parallelize(Arrays.asList(1, 2, 3, 4, 5), 2);
     TaskContext context = TaskContext$.MODULE$.empty();
-    assertEquals(1, rdd.iterator(rdd.partitions().get(0), context).next().intValue());
+    assertEquals(1, rdd.iterator(rdd.partitions().get(0), context).next().value().intValue());
   }
 
   @Test
@@ -1177,8 +1180,8 @@ public class JavaAPISuite implements Serializable {
   public void zipPartitions() {
     JavaRDD<Integer> rdd1 = sc.parallelize(Arrays.asList(1, 2, 3, 4, 5, 6), 2);
     JavaRDD<String> rdd2 = sc.parallelize(Arrays.asList("1", "2", "3", "4"), 2);
-    FlatMapFunction2<Iterator<Integer>, Iterator<String>, Integer> sizesFn =
-        (i, s) -> Arrays.asList(Iterators.size(i), Iterators.size(s)).iterator();
+    FlatMapFunction3<Iterator<DataElement<Integer>>, Iterator<DataElement<String>>,Task, DataElement<Integer>> sizesFn =
+        (i, s, t) -> Arrays.asList(DataElement.of(Iterators.size(i)), DataElement.of(Iterators.size(s))).iterator();
 
     JavaRDD<Integer> sizes = rdd1.zipPartitions(rdd2, sizesFn);
     assertEquals("[3, 2, 3, 2]", sizes.collect().toString());

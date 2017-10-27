@@ -19,33 +19,37 @@ package org.apache.spark.util.collection
 
 import java.util.Comparator
 
-import scala.collection.mutable.HashSet
+import br.uff.spark.{DataElement, Task}
 
+import scala.collection.mutable.HashSet
 import org.apache.spark.SparkFunSuite
 
 class AppendOnlyMapSuite extends SparkFunSuite {
+  val testTask = new Task(null)
+  testTask.description = "AppendOnlyMapSuiteTestFakeRDD"
+
   test("initialization") {
-    val goodMap1 = new AppendOnlyMap[Int, Int](1)
+    val goodMap1 = new AppendOnlyMap[Int, Int](testTask, 1)
     assert(goodMap1.size === 0)
-    val goodMap2 = new AppendOnlyMap[Int, Int](255)
+    val goodMap2 = new AppendOnlyMap[Int, Int](testTask, 255)
     assert(goodMap2.size === 0)
-    val goodMap3 = new AppendOnlyMap[Int, Int](256)
+    val goodMap3 = new AppendOnlyMap[Int, Int](testTask, 256)
     assert(goodMap3.size === 0)
     intercept[IllegalArgumentException] {
-      new AppendOnlyMap[Int, Int](1 << 30) // Invalid map size: bigger than 2^29
+      new AppendOnlyMap[Int, Int](testTask, 1 << 30) // Invalid map size: bigger than 2^29
     }
     intercept[IllegalArgumentException] {
-      new AppendOnlyMap[Int, Int](-1)
+      new AppendOnlyMap[Int, Int](testTask, -1)
     }
     intercept[IllegalArgumentException] {
-      new AppendOnlyMap[Int, Int](0)
+      new AppendOnlyMap[Int, Int](testTask, 0)
     }
   }
 
   test("object keys and values") {
-    val map = new AppendOnlyMap[String, String]()
+    val map = new AppendOnlyMap[String, String](testTask)
     for (i <- 1 to 100) {
-      map("" + i) = "" + i
+      map("" + i) = DataElement.dummy(("" + i, "" + i))
     }
     assert(map.size === 100)
     for (i <- 1 to 100) {
@@ -55,16 +59,16 @@ class AppendOnlyMapSuite extends SparkFunSuite {
     assert(map("101") === null)
     assert(map(null) === null)
     val set = new HashSet[(String, String)]
-    for ((k, v) <- map) {   // Test the foreach method
-      set += ((k, v))
+    for ( de <- map) {   // Test the foreach method
+      set += de.value
     }
     assert(set === (1 to 100).map(_.toString).map(x => (x, x)).toSet)
   }
 
   test("primitive keys and values") {
-    val map = new AppendOnlyMap[Int, Int]()
+    val map = new AppendOnlyMap[Int, Int](testTask)
     for (i <- 1 to 100) {
-      map(i) = i
+      map(i) = DataElement.dummy((i, i))
     }
     assert(map.size === 100)
     for (i <- 1 to 100) {
@@ -73,28 +77,28 @@ class AppendOnlyMapSuite extends SparkFunSuite {
     assert(map(0) === null)
     assert(map(101) === null)
     val set = new HashSet[(Int, Int)]
-    for ((k, v) <- map) {   // Test the foreach method
-      set += ((k, v))
+    for (de <- map) {   // Test the foreach method
+      set += de.value
     }
     assert(set === (1 to 100).map(x => (x, x)).toSet)
   }
 
   test("null keys") {
-    val map = new AppendOnlyMap[String, String]()
+    val map = new AppendOnlyMap[String, String](testTask)
     for (i <- 1 to 100) {
-      map("" + i) = "" + i
+      map("" + i) = DataElement.dummy(("" + i, "" + i))
     }
     assert(map.size === 100)
     assert(map(null) === null)
-    map(null) = "hello"
+    map(null) = DataElement.dummy((null, "hello"))
     assert(map.size === 101)
     assert(map(null) === "hello")
   }
 
   test("null values") {
-    val map = new AppendOnlyMap[String, String]()
+    val map = new AppendOnlyMap[String, String](testTask)
     for (i <- 1 to 100) {
-      map("" + i) = null
+      map("" + i) = DataElement.dummy(("" + i, null))
     }
     assert(map.size === 100)
     assert(map("1") === null)
@@ -106,13 +110,16 @@ class AppendOnlyMapSuite extends SparkFunSuite {
   }
 
   test("changeValue") {
-    val map = new AppendOnlyMap[String, String]()
+    val map = new AppendOnlyMap[String, String](testTask)
     for (i <- 1 to 100) {
-      map("" + i) = "" + i
+      map("" + i) = DataElement.of(("" + i,"" + i))
     }
     assert(map.size === 100)
+
+    val dummyDenpendice = DataElement.of(null)
+
     for (i <- 1 to 100) {
-      val res = map.changeValue("" + i, (hadValue, oldValue) => {
+      val res = map.changeValue("" + i, "" + i, dummyDenpendice, null, (hadValue, oldValue) => {
         assert(hadValue === true)
         assert(oldValue === "" + i)
         oldValue + "!"
@@ -122,7 +129,7 @@ class AppendOnlyMapSuite extends SparkFunSuite {
     // Iterate from 101 to 400 to make sure the map grows a couple of times, because we had a
     // bug where changeValue would return the wrong result when the map grew on that insert
     for (i <- 101 to 400) {
-      val res = map.changeValue("" + i, (hadValue, oldValue) => {
+      val res = map.changeValue("" + i,"" + i, dummyDenpendice, null, (hadValue, oldValue) => {
         assert(hadValue === false)
         i + "!"
       })
@@ -130,12 +137,12 @@ class AppendOnlyMapSuite extends SparkFunSuite {
     }
     assert(map.size === 400)
     assert(map(null) === null)
-    map.changeValue(null, (hadValue, oldValue) => {
+    map.changeValue(null, null, dummyDenpendice, null, (hadValue, oldValue) => {
       assert(hadValue === false)
       "null!"
     })
     assert(map.size === 401)
-    map.changeValue(null, (hadValue, oldValue) => {
+    map.changeValue(null, null, dummyDenpendice, null, (hadValue, oldValue) => {
       assert(hadValue === true)
       assert(oldValue === "null!")
       "null!!"
@@ -144,9 +151,9 @@ class AppendOnlyMapSuite extends SparkFunSuite {
   }
 
   test("inserting in capacity-1 map") {
-    val map = new AppendOnlyMap[String, String](1)
+    val map = new AppendOnlyMap[String, String](testTask, 1)
     for (i <- 1 to 100) {
-      map("" + i) = "" + i
+      map("" + i) = DataElement.dummy(("" + i,"" + i))
     }
     assert(map.size === 100)
     for (i <- 1 to 100) {
@@ -155,16 +162,16 @@ class AppendOnlyMapSuite extends SparkFunSuite {
   }
 
   test("destructive sort") {
-    val map = new AppendOnlyMap[String, String]()
+    val map = new AppendOnlyMap[String, String](testTask)
     for (i <- 1 to 100) {
-      map("" + i) = "" + i
+      map("" + i) = DataElement.dummy(("" + i, "" + i))
     }
-    map.update(null, "happy new year!")
+    map.update(null, DataElement.dummy((null, "happy new year!")))
 
     try {
       map.apply("1")
-      map.update("1", "2013")
-      map.changeValue("1", (hadValue, oldValue) => "2014")
+      map.update("1", DataElement.of(("1", "2013")))
+      map.changeValue("1", "1", DataElement.of(null), null, (hadValue, oldValue) => "2014")
       map.iterator
     } catch {
       case e: IllegalStateException => fail()
@@ -181,9 +188,9 @@ class AppendOnlyMapSuite extends SparkFunSuite {
     // Should be sorted by key
     assert(it.hasNext)
     var previous = it.next()
-    assert(previous == ((null, "happy new year!")))
+    assert(previous._2.asInstanceOf[DataElement[(Any, String)]].value == ((null, "happy new year!")))
     previous = it.next()
-    assert(previous == (("1", "2014")))
+    assert(previous._2.asInstanceOf[DataElement[(Any, String)]].value == (("1", "2014")))
     while (it.hasNext) {
       val kv = it.next()
       assert(kv._1.toInt > previous._1.toInt)
@@ -192,8 +199,8 @@ class AppendOnlyMapSuite extends SparkFunSuite {
 
     // All subsequent calls to apply, update, changeValue and iterator should throw exception
     intercept[AssertionError] { map.apply("1") }
-    intercept[AssertionError] { map.update("1", "2013") }
-    intercept[AssertionError] { map.changeValue("1", (hadValue, oldValue) => "2014") }
+    intercept[AssertionError] { map.update("1", DataElement.dummy("2013")) }
+    intercept[AssertionError] { map.changeValue("1", "1", null, null,(hadValue, oldValue) => "2014") }
     intercept[AssertionError] { map.iterator }
   }
 }

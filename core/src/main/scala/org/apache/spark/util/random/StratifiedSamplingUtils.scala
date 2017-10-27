@@ -17,13 +17,13 @@
 
 package org.apache.spark.util.random
 
+import br.uff.spark.{DataElement, DataflowUtils}
+
 import scala.collection.Map
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
 import org.apache.commons.math3.distribution.PoissonDistribution
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 
@@ -69,7 +69,7 @@ private[spark] object StratifiedSamplingUtils extends Logging {
       val rng = new RandomDataGenerator()
       rng.reSeed(seed + partition)
       val seqOp = getSeqOp(withReplacement, fractions, rng, counts)
-      Iterator(iter.aggregate(zeroU)(seqOp, combOp))
+      Iterator(DataElement.of(DataflowUtils.extractFromIterator(iter).aggregate(zeroU)(seqOp, combOp)))
     }
     mappedPartitionRDD.reduce(combOp)
   }
@@ -208,19 +208,19 @@ private[spark] object StratifiedSamplingUtils extends Logging {
   def getBernoulliSamplingFunction[K, V](rdd: RDD[(K, V)],
       fractions: Map[K, Double],
       exact: Boolean,
-      seed: Long): (Int, Iterator[(K, V)]) => Iterator[(K, V)] = {
+      seed: Long): (Int, Iterator[DataElement[(K, V)]]) => Iterator[DataElement[(K, V)]] = {
     var samplingRateByKey = fractions
     if (exact) {
       // determine threshold for each stratum and resample
       val finalResult = getAcceptanceResults(rdd, false, fractions, None, seed)
       samplingRateByKey = computeThresholdByKey(finalResult, fractions)
     }
-    (idx: Int, iter: Iterator[(K, V)]) => {
+    (idx: Int, iter: Iterator[DataElement[(K, V)]]) => {
       val rng = new RandomDataGenerator()
       rng.reSeed(seed + idx)
       // Must use the same invoke pattern on the rng as in getSeqOp for without replacement
       // in order to generate the same sequence of random numbers when creating the sample
-      iter.filter(t => rng.nextUniform() < samplingRateByKey(t._1))
+      iter.filter(t => rng.nextUniform() < samplingRateByKey(t.value._1))
     }
   }
 
@@ -237,17 +237,17 @@ private[spark] object StratifiedSamplingUtils extends Logging {
   def getPoissonSamplingFunction[K: ClassTag, V: ClassTag](rdd: RDD[(K, V)],
       fractions: Map[K, Double],
       exact: Boolean,
-      seed: Long): (Int, Iterator[(K, V)]) => Iterator[(K, V)] = {
+      seed: Long): (Int, Iterator[DataElement[(K, V)]]) => Iterator[DataElement[(K, V)]] = {
     // TODO implement the streaming version of sampling w/ replacement that doesn't require counts
     if (exact) {
       val counts = Some(rdd.countByKey())
       val finalResult = getAcceptanceResults(rdd, true, fractions, counts, seed)
       val thresholdByKey = computeThresholdByKey(finalResult, fractions)
-      (idx: Int, iter: Iterator[(K, V)]) => {
+      (idx: Int, iter: Iterator[DataElement[(K, V)]]) => {
         val rng = new RandomDataGenerator()
         rng.reSeed(seed + idx)
         iter.flatMap { item =>
-          val key = item._1
+          val key = item.value._1
           val acceptBound = finalResult(key).acceptBound
           // Must use the same invoke pattern on the rng as in getSeqOp for with replacement
           // in order to generate the same sequence of random numbers when creating the sample
@@ -263,11 +263,11 @@ private[spark] object StratifiedSamplingUtils extends Logging {
         }
       }
     } else {
-      (idx: Int, iter: Iterator[(K, V)]) => {
+      (idx: Int, iter: Iterator[DataElement[(K, V)]]) => {
         val rng = new RandomDataGenerator()
         rng.reSeed(seed + idx)
         iter.flatMap { item =>
-          val count = rng.nextPoisson(fractions(item._1))
+          val count = rng.nextPoisson(fractions(item.value._1))
           if (count == 0) {
             Iterator.empty
           } else {

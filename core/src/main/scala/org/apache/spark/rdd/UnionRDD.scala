@@ -19,11 +19,12 @@ package org.apache.spark.rdd
 
 import java.io.{IOException, ObjectOutputStream}
 
+import br.uff.spark.{DataElement, TransformationType}
+
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.ForkJoinTaskSupport
 import scala.concurrent.forkjoin.ForkJoinPool
 import scala.reflect.ClassTag
-
 import org.apache.spark.{Dependency, Partition, RangeDependency, SparkContext, TaskContext}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.util.Utils
@@ -69,6 +70,13 @@ class UnionRDD[T: ClassTag](
     var rdds: Seq[RDD[T]])
   extends RDD[T](sc, Nil) {  // Nil since we implement getDependencies
 
+  // loading dependencies
+  for (elem <- rdds) {
+    task.addDepencencie(elem.task)
+    elem.task.checkAndPersist()
+  }
+  setTransformationType(TransformationType.UNION)
+
   // visible for testing
   private[spark] val isPartitionListingParallel: Boolean =
     rdds.length > conf.getInt("spark.rdd.parallelListingThreshold", 10)
@@ -100,7 +108,7 @@ class UnionRDD[T: ClassTag](
     deps
   }
 
-  override def compute(s: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(s: Partition, context: TaskContext): Iterator[DataElement[T]] = {
     val part = s.asInstanceOf[UnionPartition[T]]
     parent[T](part.parentRddIndex).iterator(part.parentPartition, context)
   }

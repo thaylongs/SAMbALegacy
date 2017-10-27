@@ -17,6 +17,8 @@
 
 package org.apache.spark
 
+import br.uff.spark.Task
+
 import scala.reflect.ClassTag
 
 import org.apache.spark.annotation.DeveloperApi
@@ -73,7 +75,8 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
     val serializer: Serializer = SparkEnv.get.serializer,
     val keyOrdering: Option[Ordering[K]] = None,
     val aggregator: Option[Aggregator[K, V, C]] = None,
-    val mapSideCombine: Boolean = false)
+    val mapSideCombine: Boolean = false,
+    val taskOfRDDWhichRequestThis: Task)
   extends Dependency[Product2[K, V]] {
 
   override def rdd: RDD[Product2[K, V]] = _rdd.asInstanceOf[RDD[Product2[K, V]]]

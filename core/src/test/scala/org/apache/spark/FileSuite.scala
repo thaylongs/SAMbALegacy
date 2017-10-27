@@ -21,8 +21,9 @@ import java.io._
 import java.nio.ByteBuffer
 import java.util.zip.GZIPOutputStream
 
-import scala.io.Source
+import br.uff.spark.DataElement
 
+import scala.io.Source
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.io._
 import org.apache.hadoop.io.compress.DefaultCodec
@@ -30,7 +31,6 @@ import org.apache.hadoop.mapred.{FileAlreadyExistsException, FileSplit, JobConf,
 import org.apache.hadoop.mapreduce.Job
 import org.apache.hadoop.mapreduce.lib.input.{FileSplit => NewFileSplit, TextInputFormat => NewTextInputFormat}
 import org.apache.hadoop.mapreduce.lib.output.{TextOutputFormat => NewTextOutputFormat}
-
 import org.apache.spark.internal.config.IGNORE_CORRUPT_FILES
 import org.apache.spark.rdd.{HadoopRDD, NewHadoopRDD}
 import org.apache.spark.storage.StorageLevel
@@ -430,7 +430,7 @@ class FileSuite extends SparkFunSuite with LocalSparkContext {
       sc.hadoopFile(outDir, classOf[TextInputFormat], classOf[LongWritable], classOf[Text])
         .asInstanceOf[HadoopRDD[_, _]]
         .mapPartitionsWithInputSplit { (split, part) =>
-          Iterator(split.asInstanceOf[FileSplit].getPath.toUri.getPath)
+          Iterator(split.asInstanceOf[FileSplit].getPath.toUri.getPath).map(a=>DataElement.of(a))
         }.collect()
     val outPathOne = new Path(outDir, "part-00000").toUri.getPath
     val outPathTwo = new Path(outDir, "part-00001").toUri.getPath
@@ -446,7 +446,7 @@ class FileSuite extends SparkFunSuite with LocalSparkContext {
       sc.newAPIHadoopFile(outDir, classOf[NewTextInputFormat], classOf[LongWritable], classOf[Text])
         .asInstanceOf[NewHadoopRDD[_, _]]
         .mapPartitionsWithInputSplit { (split, part) =>
-          Iterator(split.asInstanceOf[NewFileSplit].getPath.toUri.getPath)
+          Iterator(split.asInstanceOf[NewFileSplit].getPath.toUri.getPath).map(a=>DataElement.of(a))
         }.collect()
     val outPathOne = new Path(outDir, "part-00000").toUri.getPath
     val outPathTwo = new Path(outDir, "part-00001").toUri.getPath

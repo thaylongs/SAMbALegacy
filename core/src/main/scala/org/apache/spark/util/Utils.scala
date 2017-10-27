@@ -33,15 +33,15 @@ import javax.net.ssl.HttpsURLConnection
 
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
-import scala.collection.Map
+import scala.collection.{AbstractIterator, Iterator, Map}
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 import scala.reflect.ClassTag
 import scala.util.Try
 import scala.util.control.{ControlThrowable, NonFatal}
 import scala.util.matching.Regex
-
 import _root_.io.netty.channel.unix.Errors.NativeIoException
+import br.uff.spark.{DataElement, Task}
 import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 import com.google.common.io.{ByteStreams, Files => GFiles}
 import com.google.common.net.InetAddresses
@@ -53,13 +53,14 @@ import org.apache.log4j.PropertyConfigurator
 import org.eclipse.jetty.util.MultiException
 import org.json4s._
 import org.slf4j.Logger
-
 import org.apache.spark._
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, SerializerInstance}
+
+import scala.collection.Iterator.empty
 
 /** CallSite represents a place in user code. It can have a short and a long form. */
 private[spark] case class CallSite(shortForm: String, longForm: String)
@@ -1827,14 +1828,20 @@ private[spark] object Utils extends Logging {
    * Generate a zipWithIndex iterator, avoid index value overflowing problem
    * in scala's zipWithIndex
    */
-  def getIteratorZipWithIndex[T](iterator: Iterator[T], startIndex: Long): Iterator[(T, Long)] = {
-    new Iterator[(T, Long)] {
+  def getIteratorZipWithIndex[T](iterator: Iterator[DataElement[T]], startIndex: Long, task: Task): Iterator[DataElement[(T, Long)]] = {
+    var ignoreIT = false
+    if (task == null)
+      ignoreIT = true
+    else
+      ignoreIT = task.isIgnored
+    new Iterator[DataElement[(T, Long)]] {
       require(startIndex >= 0, "startIndex should be >= 0.")
       var index: Long = startIndex - 1L
       def hasNext: Boolean = iterator.hasNext
-      def next(): (T, Long) = {
+      def next(): DataElement[(T, Long)] = {
         index += 1L
-        (iterator.next(), index)
+        val nextValue  =iterator.next()
+        DataElement.of((nextValue.value, index), task, ignoreIT, nextValue)
       }
     }
   }

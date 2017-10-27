@@ -39,7 +39,7 @@ class FlatmapIteratorSuite extends SparkFunSuite with LocalSparkContext {
       flatMap( x => Stream.range(0, expand_size))
     var persisted = data.persist(StorageLevel.DISK_ONLY)
     assert(persisted.count()===500)
-    assert(persisted.filter(_==1).count()===5)
+    assert(persisted.filter(_==1).checkAndPersistProvenance().count()===5)
   }
 
   test("Flatmap Iterator to Memory") {
@@ -50,7 +50,7 @@ class FlatmapIteratorSuite extends SparkFunSuite with LocalSparkContext {
       flatMap(x => Stream.range(0, expand_size))
     var persisted = data.persist(StorageLevel.MEMORY_ONLY)
     assert(persisted.count()===500)
-    assert(persisted.filter(_==1).count()===5)
+    assert(persisted.filter(_==1).checkAndPersistProvenance().count()===5)
   }
 
   test("Serializer Reset") {
@@ -62,7 +62,7 @@ class FlatmapIteratorSuite extends SparkFunSuite with LocalSparkContext {
       flatMap(x => Stream.range(1, expand_size).
       map(y => "%d: string test %d".format(y, x)))
     val persisted = data.persist(StorageLevel.MEMORY_ONLY_SER)
-    assert(persisted.filter(_.startsWith("1:")).count()===2)
+    assert(persisted.filter(_.startsWith("1:")).checkAndPersistProvenance().count()===2)
   }
 
 }

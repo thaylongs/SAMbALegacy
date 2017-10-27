@@ -20,10 +20,11 @@ package org.apache.spark
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 
+import br.uff.spark.DataElement
+
 import scala.concurrent._
 import scala.concurrent.duration.Duration
 import scala.util.Try
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.api.java.JavaFutureAction
 import org.apache.spark.rdd.RDD
@@ -169,7 +170,7 @@ trait JobSubmitter {
    */
   def submitJob[T, U, R](
     rdd: RDD[T],
-    processPartition: Iterator[T] => U,
+    processPartition: Iterator[DataElement[T]] => U,
     partitions: Seq[Int],
     resultHandler: (Int, U) => Unit,
     resultFunc: => R): FutureAction[R]
@@ -201,7 +202,7 @@ class ComplexFutureAction[T](run : JobSubmitter => Future[T])
   private def jobSubmitter = new JobSubmitter {
     def submitJob[T, U, R](
       rdd: RDD[T],
-      processPartition: Iterator[T] => U,
+      processPartition: Iterator[DataElement[T]] => U,
       partitions: Seq[Int],
       resultHandler: (Int, U) => Unit,
       resultFunc: => R): FutureAction[R] = self.synchronized {

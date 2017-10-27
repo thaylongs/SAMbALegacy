@@ -19,11 +19,11 @@ package org.apache.spark
 
 import java.io.File
 
-import scala.reflect.ClassTag
+import br.uff.spark.DataElement
 
+import scala.reflect.ClassTag
 import com.google.common.io.ByteStreams
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark.io.CompressionCodec
 import org.apache.spark.rdd._
 import org.apache.spark.storage.{BlockId, StorageLevel, TestBlockId}
@@ -323,16 +323,16 @@ class CheckpointSuite extends SparkFunSuite with RDDCheckpointTester with LocalS
   runTest("RDDs with one-to-one dependencies") { reliableCheckpoint: Boolean =>
     testRDD(_.map(x => x.toString), reliableCheckpoint)
     testRDD(_.flatMap(x => 1 to x), reliableCheckpoint)
-    testRDD(_.filter(_ % 2 == 0), reliableCheckpoint)
+    testRDD(_.filter(_ % 2 == 0).checkAndPersistProvenance(), reliableCheckpoint)
     testRDD(_.sample(false, 0.5, 0), reliableCheckpoint)
     testRDD(_.glom(), reliableCheckpoint)
-    testRDD(_.mapPartitions(_.map(_.toString)), reliableCheckpoint)
+    testRDD(_.mapPartitions(_.map(_.value.toString).map(a=>DataElement.of(a))), reliableCheckpoint)
     testRDD(_.map(x => (x % 2, 1)).reduceByKey(_ + _).mapValues(_.toString), reliableCheckpoint)
     testRDD(_.map(x => (x % 2, 1)).reduceByKey(_ + _).flatMapValues(x => 1 to x),
       reliableCheckpoint)
-    testRDD(_.pipe(Seq("cat")), reliableCheckpoint)
+//    testRDD(_.pipe(Seq("cat")), reliableCheckpoint) // only works in linux
   }
-
+7
   runTest("ParallelCollectionRDD") { reliableCheckpoint: Boolean =>
     val parCollection = sc.makeRDD(1 to 4, 2)
     val numPartitions = parCollection.partitions.size
@@ -352,7 +352,7 @@ class CheckpointSuite extends SparkFunSuite with RDDCheckpointTester with LocalS
   runTest("BlockRDD") { reliableCheckpoint: Boolean =>
     val blockId = TestBlockId("id")
     val blockManager = SparkEnv.get.blockManager
-    blockManager.putSingle(blockId, "test", StorageLevel.MEMORY_ONLY)
+    blockManager.putSingle(blockId, DataElement.of("test"), StorageLevel.MEMORY_ONLY)
     val blockRDD = new BlockRDD[String](sc, Array(blockId))
     val numPartitions = blockRDD.partitions.size
     checkpoint(blockRDD, reliableCheckpoint)
@@ -551,7 +551,7 @@ class FatRDD(parent: RDD[Int]) extends RDD[Int](parent) {
     parent.partitions.map(p => new FatPartition(p))
   }
 
-  def compute(split: Partition, context: TaskContext): Iterator[Int] = {
+  def compute(split: Partition, context: TaskContext): Iterator[DataElement[Int]] = {
     parent.compute(split.asInstanceOf[FatPartition].partition, context)
   }
 }
@@ -566,8 +566,8 @@ class FatPairRDD(parent: RDD[Int], _partitioner: Partitioner) extends RDD[(Int, 
 
   @transient override val partitioner = Some(_partitioner)
 
-  def compute(split: Partition, context: TaskContext): Iterator[(Int, Int)] = {
-    parent.compute(split.asInstanceOf[FatPartition].partition, context).map(x => (x, x))
+  def compute(split: Partition, context: TaskContext): Iterator[DataElement[(Int, Int)]] = {
+    parent.compute(split.asInstanceOf[FatPartition].partition, context).map(x =>  DataElement.of((x.value, x.value)))
   }
 }
 

@@ -21,20 +21,20 @@ import java.{lang => jl}
 import java.lang.{Iterable => JIterable}
 import java.util.{Comparator, List => JList}
 
+import br.uff.spark.{DataElement, TransformationType}
+
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.{JobConf, OutputFormat}
 import org.apache.hadoop.mapreduce.{OutputFormat => NewOutputFormat}
-
 import org.apache.spark.{HashPartitioner, Partitioner}
 import org.apache.spark.Partitioner._
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
 import org.apache.spark.api.java.JavaUtils.mapAsSerializableJavaMap
-import org.apache.spark.api.java.function.{Function => JFunction, Function2 => JFunction2, PairFunction}
+import org.apache.spark.api.java.function.{PairFunction, Function => JFunction, Function2 => JFunction2}
 import org.apache.spark.partial.{BoundedDouble, PartialResult}
 import org.apache.spark.rdd.{OrderedRDDFunctions, RDD}
 import org.apache.spark.rdd.RDD.rddToPairRDDFunctions
@@ -48,7 +48,7 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
 
   override def wrapRDD(rdd: RDD[(K, V)]): JavaPairRDD[K, V] = JavaPairRDD.fromRDD(rdd)
 
-  override val classTag: ClassTag[(K, V)] = rdd.elementClassTag
+  override val classTag: ClassTag[(K, V)] = rdd.elementClassTagDE
 
   import JavaPairRDD._
 
@@ -556,7 +556,7 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
    * will provide much better performance.
    */
   def groupByKey(): JavaPairRDD[K, JIterable[V]] =
-    fromRDD(groupByResultToJava(rdd.groupByKey()))
+    fromRDD(groupByResultToJava(rdd.groupByKey().ignoreIt()))
 
   /**
    * Return an RDD containing all pairs of elements with matching keys in `this` and `other`. Each
@@ -581,8 +581,8 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
    * using the existing partitioner/parallelism level.
    */
   def leftOuterJoin[W](other: JavaPairRDD[K, W]): JavaPairRDD[K, (V, Optional[W])] = {
-    val joinResult = rdd.leftOuterJoin(other)
-    fromRDD(joinResult.mapValues{case (v, w) => (v, JavaUtils.optionToOptional(w))})
+    val joinResult = rdd.leftOuterJoin(other).ignoreIt()
+    fromRDD(joinResult.mapValues{case (v, w) => (v, JavaUtils.optionToOptional(w))}.setTransformationType(TransformationType.LEFT_OUTER_JOIN))
   }
 
   /**
@@ -593,8 +593,8 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
    */
   def leftOuterJoin[W](other: JavaPairRDD[K, W], numPartitions: Int)
   : JavaPairRDD[K, (V, Optional[W])] = {
-    val joinResult = rdd.leftOuterJoin(other, numPartitions)
-    fromRDD(joinResult.mapValues{case (v, w) => (v, JavaUtils.optionToOptional(w))})
+    val joinResult = rdd.leftOuterJoin(other, numPartitions).ignoreIt()
+    fromRDD(joinResult.mapValues{case (v, w) => (v, JavaUtils.optionToOptional(w))}.setTransformationType(TransformationType.LEFT_OUTER_JOIN))
   }
 
   /**
@@ -604,8 +604,8 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
    * RDD using the existing partitioner/parallelism level.
    */
   def rightOuterJoin[W](other: JavaPairRDD[K, W]): JavaPairRDD[K, (Optional[V], W)] = {
-    val joinResult = rdd.rightOuterJoin(other)
-    fromRDD(joinResult.mapValues{case (v, w) => (JavaUtils.optionToOptional(v), w)})
+    val joinResult = rdd.rightOuterJoin(other).ignoreIt()
+    fromRDD(joinResult.mapValues{case (v, w) => (JavaUtils.optionToOptional(v), w)}.setTransformationType(TransformationType.RIGHT_OUTER_JOIN))
   }
 
   /**
@@ -616,8 +616,8 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
    */
   def rightOuterJoin[W](other: JavaPairRDD[K, W], numPartitions: Int)
   : JavaPairRDD[K, (Optional[V], W)] = {
-    val joinResult = rdd.rightOuterJoin(other, numPartitions)
-    fromRDD(joinResult.mapValues{case (v, w) => (JavaUtils.optionToOptional(v), w)})
+    val joinResult = rdd.rightOuterJoin(other, numPartitions).ignoreIt()
+    fromRDD(joinResult.mapValues{case (v, w) => (JavaUtils.optionToOptional(v), w)}.setTransformationType(TransformationType.RIGHT_OUTER_JOIN))
   }
 
   /**
@@ -630,10 +630,10 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
    * parallelism level.
    */
   def fullOuterJoin[W](other: JavaPairRDD[K, W]): JavaPairRDD[K, (Optional[V], Optional[W])] = {
-    val joinResult = rdd.fullOuterJoin(other)
+    val joinResult = rdd.fullOuterJoin(other).ignoreIt()
     fromRDD(joinResult.mapValues{ case (v, w) =>
       (JavaUtils.optionToOptional(v), JavaUtils.optionToOptional(w))
-    })
+    }.setTransformationType(TransformationType.FULL_OUTER_JOIN))
   }
 
   /**
@@ -646,10 +646,10 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
    */
   def fullOuterJoin[W](other: JavaPairRDD[K, W], numPartitions: Int)
   : JavaPairRDD[K, (Optional[V], Optional[W])] = {
-    val joinResult = rdd.fullOuterJoin(other, numPartitions)
+    val joinResult = rdd.fullOuterJoin(other, numPartitions).ignoreIt()
     fromRDD(joinResult.mapValues{ case (v, w) =>
       (JavaUtils.optionToOptional(v), JavaUtils.optionToOptional(w))
-    })
+    }.setTransformationType(TransformationType.FULL_OUTER_JOIN))
   }
 
   /**
@@ -1003,27 +1003,27 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
 object JavaPairRDD {
   private[spark]
   def groupByResultToJava[K: ClassTag, T](rdd: RDD[(K, Iterable[T])]): RDD[(K, JIterable[T])] = {
-    rddToPairRDDFunctions(rdd).mapValues(_.asJava)
+    rddToPairRDDFunctions(rdd).mapValues(_.asJava).setTransformationType(TransformationType.GROUP_BY_KEY)
   }
 
   private[spark]
   def cogroupResultToJava[K: ClassTag, V, W](
       rdd: RDD[(K, (Iterable[V], Iterable[W]))]): RDD[(K, (JIterable[V], JIterable[W]))] = {
-    rddToPairRDDFunctions(rdd).mapValues(x => (x._1.asJava, x._2.asJava))
+    rddToPairRDDFunctions(rdd.ignoreIt()).mapValues(x => (x._1.asJava, x._2.asJava)).setTransformationType(TransformationType.CO_GROUPED)
   }
 
   private[spark]
   def cogroupResult2ToJava[K: ClassTag, V, W1, W2](
       rdd: RDD[(K, (Iterable[V], Iterable[W1], Iterable[W2]))])
       : RDD[(K, (JIterable[V], JIterable[W1], JIterable[W2]))] = {
-    rddToPairRDDFunctions(rdd).mapValues(x => (x._1.asJava, x._2.asJava, x._3.asJava))
+    rddToPairRDDFunctions(rdd.ignoreIt()).mapValues(x => (x._1.asJava, x._2.asJava, x._3.asJava)).setTransformationType(TransformationType.CO_GROUPED)
   }
 
   private[spark]
   def cogroupResult3ToJava[K: ClassTag, V, W1, W2, W3](
       rdd: RDD[(K, (Iterable[V], Iterable[W1], Iterable[W2], Iterable[W3]))])
   : RDD[(K, (JIterable[V], JIterable[W1], JIterable[W2], JIterable[W3]))] = {
-    rddToPairRDDFunctions(rdd).mapValues(x => (x._1.asJava, x._2.asJava, x._3.asJava, x._4.asJava))
+    rddToPairRDDFunctions(rdd.ignoreIt()).mapValues(x => (x._1.asJava, x._2.asJava, x._3.asJava, x._4.asJava)).setTransformationType(TransformationType.CO_GROUPED)
   }
 
   def fromRDD[K: ClassTag, V: ClassTag](rdd: RDD[(K, V)]): JavaPairRDD[K, V] = {

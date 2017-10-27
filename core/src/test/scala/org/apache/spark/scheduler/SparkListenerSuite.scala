@@ -19,12 +19,12 @@ package org.apache.spark.scheduler
 
 import java.util.concurrent.Semaphore
 
+import br.uff.spark.DataElement
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
-
 import org.mockito.Mockito
 import org.scalatest.Matchers
-
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.internal.config.LISTENER_BUS_EVENT_QUEUE_CAPACITY
@@ -266,7 +266,7 @@ class SparkListenerSuite extends SparkFunSuite with LocalSparkContext with Match
     sc.addSparkListener(listener)
     val rdd1 = sc.parallelize(1 to 100, 4)
     val rdd2 = rdd1.map(_.toString)
-    sc.runJob(rdd2, (items: Iterator[String]) => items.size, Seq(0, 1))
+    sc.runJob(rdd2, (items: Iterator[DataElement[String]]) => items.size, Seq(0, 1))
 
     sc.listenerBus.waitUntilEmpty(WAIT_TIMEOUT_MILLIS)
 

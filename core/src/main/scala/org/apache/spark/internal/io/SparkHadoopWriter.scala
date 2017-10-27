@@ -20,16 +20,14 @@ package org.apache.spark.internal.io
 import java.text.NumberFormat
 import java.util.{Date, Locale}
 
-import scala.reflect.ClassTag
+import br.uff.spark.DataElement
 
+import scala.reflect.ClassTag
 import org.apache.hadoop.conf.{Configurable, Configuration}
 import org.apache.hadoop.fs.FileSystem
 import org.apache.hadoop.mapred._
-import org.apache.hadoop.mapreduce.{JobContext => NewJobContext,
-OutputFormat => NewOutputFormat, RecordWriter => NewRecordWriter,
-TaskAttemptContext => NewTaskAttemptContext, TaskAttemptID => NewTaskAttemptID, TaskType}
+import org.apache.hadoop.mapreduce.{TaskType, JobContext => NewJobContext, OutputFormat => NewOutputFormat, RecordWriter => NewRecordWriter, TaskAttemptContext => NewTaskAttemptContext, TaskAttemptID => NewTaskAttemptID}
 import org.apache.hadoop.mapreduce.task.{TaskAttemptContextImpl => NewTaskAttemptContextImpl}
-
 import org.apache.spark.{SerializableWritable, SparkConf, SparkException, TaskContext}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.internal.Logging
@@ -75,7 +73,7 @@ object SparkHadoopWriter extends Logging {
 
     // Try to write all RDD partitions as a Hadoop OutputFormat.
     try {
-      val ret = sparkContext.runJob(rdd, (context: TaskContext, iter: Iterator[(K, V)]) => {
+      val ret = sparkContext.runJob(rdd, (context: TaskContext, iter: Iterator[DataElement[(K, V)]]) => {
         executeTask(
           context = context,
           config = config,
@@ -106,7 +104,7 @@ object SparkHadoopWriter extends Logging {
       sparkPartitionId: Int,
       sparkAttemptNumber: Int,
       committer: FileCommitProtocol,
-      iterator: Iterator[(K, V)]): TaskCommitMessage = {
+      iterator: Iterator[DataElement[(K, V)]]): TaskCommitMessage = {
     // Set up a task.
     val taskContext = config.createTaskAttemptContext(
       jobTrackerId, sparkStageId, sparkPartitionId, sparkAttemptNumber)
@@ -123,7 +121,7 @@ object SparkHadoopWriter extends Logging {
       val ret = Utils.tryWithSafeFinallyAndFailureCallbacks {
         while (iterator.hasNext) {
           val pair = iterator.next()
-          config.write(pair)
+          config.write(pair.value)
 
           // Update bytes written metric every few records
           maybeUpdateOutputMetrics(outputMetrics, callback, recordsWritten)

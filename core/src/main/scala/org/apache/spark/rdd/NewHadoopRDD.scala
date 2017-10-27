@@ -21,15 +21,15 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.{Date, Locale}
 
-import scala.reflect.ClassTag
+import br.uff.spark.DataElement
 
+import scala.reflect.ClassTag
 import org.apache.hadoop.conf.{Configurable, Configuration}
 import org.apache.hadoop.io.Writable
 import org.apache.hadoop.mapred.JobConf
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.lib.input.{CombineFileSplit, FileSplit}
 import org.apache.hadoop.mapreduce.task.{JobContextImpl, TaskAttemptContextImpl}
-
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.deploy.SparkHadoopUtil
@@ -130,8 +130,8 @@ class NewHadoopRDD[K, V](
     result
   }
 
-  override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
-    val iter = new Iterator[(K, V)] {
+  override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[DataElement[(K, V)]] = {
+    val iter = new Iterator[DataElement[(K, V)]] {
       private val split = theSplit.asInstanceOf[NewHadoopPartition]
       logInfo("Input split: " + split.serializableHadoopSplit)
       private val conf = getConf
@@ -223,7 +223,7 @@ class NewHadoopRDD[K, V](
         !finished
       }
 
-      override def next(): (K, V) = {
+      override def next(): DataElement[(K, V)] = {
         if (!hasNext) {
           throw new java.util.NoSuchElementException("End of stream")
         }
@@ -234,7 +234,7 @@ class NewHadoopRDD[K, V](
         if (inputMetrics.recordsRead % SparkHadoopUtil.UPDATE_INPUT_METRICS_INTERVAL_RECORDS == 0) {
           updateBytesRead()
         }
-        (reader.getCurrentKey, reader.getCurrentValue)
+        DataElement.of((reader.getCurrentKey, reader.getCurrentValue))
       }
 
       private def close(): Unit = {
@@ -272,7 +272,7 @@ class NewHadoopRDD[K, V](
   /** Maps over a partition, providing the InputSplit that was used as the base of the partition. */
   @DeveloperApi
   def mapPartitionsWithInputSplit[U: ClassTag](
-      f: (InputSplit, Iterator[(K, V)]) => Iterator[U],
+      f: (InputSplit, Iterator[DataElement[(K, V)]]) => Iterator[DataElement[U]],
       preservesPartitioning: Boolean = false): RDD[U] = {
     new NewHadoopMapPartitionsWithSplitRDD(this, f, preservesPartitioning)
   }
@@ -307,7 +307,7 @@ private[spark] object NewHadoopRDD {
    */
   private[spark] class NewHadoopMapPartitionsWithSplitRDD[U: ClassTag, T: ClassTag](
       prev: RDD[T],
-      f: (InputSplit, Iterator[T]) => Iterator[U],
+      f: (InputSplit, Iterator[DataElement[T]]) => Iterator[DataElement[U]],
       preservesPartitioning: Boolean = false)
     extends RDD[U](prev) {
 
@@ -315,7 +315,7 @@ private[spark] object NewHadoopRDD {
 
     override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-    override def compute(split: Partition, context: TaskContext): Iterator[U] = {
+    override def compute(split: Partition, context: TaskContext): Iterator[DataElement[U]] = {
       val partition = split.asInstanceOf[NewHadoopPartition]
       val inputSplit = partition.serializableHadoopSplit.value
       f(inputSplit, firstParent[T].iterator(split, context))
