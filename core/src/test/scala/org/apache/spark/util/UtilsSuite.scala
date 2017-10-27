@@ -38,9 +38,10 @@ import org.apache.commons.math3.stat.inference.ChiSquareTest
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 
-import org.apache.spark.{SparkConf, SparkFunSuite, TaskContext}
+import org.apache.spark.{SparkConf, SparkException, SparkFunSuite, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.ByteUnit
+import org.apache.spark.scheduler.SparkListener
 
 class UtilsSuite extends SparkFunSuite with ResetSystemProperties with Logging {
 
@@ -460,7 +461,7 @@ class UtilsSuite extends SparkFunSuite with ResetSystemProperties with Logging {
   test("resolveURI") {
     def assertResolves(before: String, after: String): Unit = {
       // This should test only single paths
-      assume(before.split(",").length === 1)
+      assert(before.split(",").length === 1)
       def resolve(uri: String): String = Utils.resolveURI(uri).toString
       assert(resolve(before) === after)
       assert(resolve(after) === after)
@@ -488,31 +489,30 @@ class UtilsSuite extends SparkFunSuite with ResetSystemProperties with Logging {
     assertResolves("file:foo:baby", "file:foo:baby")
   }
 
-//  test("resolveURIs with multiple paths") { by thaylon
-//    def assertResolves(before: String, after: String): Unit = {
-//      assume(before.split(",").length > 1)
-//      def resolve(uri: String): String = Utils.resolveURIs(uri)
-//      assert(resolve(before) === after)
-//      assert(resolve(after) === after)
-//      // Repeated invocations of resolveURIs should yield the same result
-//      assert(resolve(resolve(after)) === after)
-//      assert(resolve(resolve(resolve(after))) === after)
-//    }
-//    val rawCwd = System.getProperty("user.dir")
-//    val cwd = if (Utils.isWindows) s"/$rawCwd".replace("\\", "/") else rawCwd
-//    assertResolves("jar1,jar2", s"file:$cwd/jar1,file:$cwd/jar2")
-//    assertResolves("file:/jar1,file:/jar2", "file:/jar1,file:/jar2")
-//    assertResolves("hdfs:/jar1,file:/jar2,jar3", s"hdfs:/jar1,file:/jar2,file:$cwd/jar3")
-//    assertResolves("hdfs:/jar1,file:/jar2,jar3,jar4#jar5,path to/jar6",
-//      s"hdfs:/jar1,file:/jar2,file:$cwd/jar3,file:$cwd/jar4#jar5,file:$cwd/path%20to/jar6")
-//    if (Utils.isWindows) {
-//      assertResolves("""hdfs:/jar1,file:/jar2,jar3,C:\pi.py#py.pi,C:\path to\jar4""",
-//        s"hdfs:/jar1,file:/jar2,file:$cwd/jar3,file:/C:/pi.py%23py.pi,file:/C:/path%20to/jar4")
-//    }
-//    assertResolves(",jar1,jar2", s"file:$cwd/jar1,file:$cwd/jar2")
-//    // Also test resolveURIs with single paths
-//    assertResolves("hdfs:/root/spark.jar", "hdfs:/root/spark.jar")
-//  }
+  test("resolveURIs with multiple paths") {
+    def assertResolves(before: String, after: String): Unit = {
+      def resolve(uri: String): String = Utils.resolveURIs(uri)
+      assert(resolve(before) === after)
+      assert(resolve(after) === after)
+      // Repeated invocations of resolveURIs should yield the same result
+      assert(resolve(resolve(after)) === after)
+      assert(resolve(resolve(resolve(after))) === after)
+    }
+    val rawCwd = System.getProperty("user.dir")
+    val cwd = if (Utils.isWindows) s"/$rawCwd".replace("\\", "/") else rawCwd
+    assertResolves("jar1,jar2", s"file:$cwd/jar1,file:$cwd/jar2")
+    assertResolves("file:/jar1,file:/jar2", "file:/jar1,file:/jar2")
+    assertResolves("hdfs:/jar1,file:/jar2,jar3", s"hdfs:/jar1,file:/jar2,file:$cwd/jar3")
+    assertResolves("hdfs:/jar1,file:/jar2,jar3,jar4#jar5,path to/jar6",
+      s"hdfs:/jar1,file:/jar2,file:$cwd/jar3,file:$cwd/jar4#jar5,file:$cwd/path%20to/jar6")
+    if (Utils.isWindows) {
+      assertResolves("""hdfs:/jar1,file:/jar2,jar3,C:\pi.py#py.pi,C:\path to\jar4""",
+        s"hdfs:/jar1,file:/jar2,file:$cwd/jar3,file:/C:/pi.py%23py.pi,file:/C:/path%20to/jar4")
+    }
+    assertResolves(",jar1,jar2", s"file:$cwd/jar1,file:$cwd/jar2")
+    // Also test resolveURIs with single paths
+    assertResolves("hdfs:/root/spark.jar", "hdfs:/root/spark.jar")
+  }
 
   test("nonLocalPaths") {
     assert(Utils.nonLocalPaths("spark.jar") === Array.empty)
@@ -1113,4 +1113,57 @@ class UtilsSuite extends SparkFunSuite with ResetSystemProperties with Logging {
     Utils.tryWithSafeFinallyAndFailureCallbacks {}(catchBlock = {}, finallyBlock = {})
     TaskContext.unset
   }
+
+  test("load extensions") {
+    val extensions = Seq(
+      classOf[SimpleExtension],
+      classOf[ExtensionWithConf],
+      classOf[UnregisterableExtension]).map(_.getName())
+
+    val conf = new SparkConf(false)
+    val instances = Utils.loadExtensions(classOf[Object], extensions, conf)
+    assert(instances.size === 2)
+    assert(instances.count(_.isInstanceOf[SimpleExtension]) === 1)
+
+    val extWithConf = instances.find(_.isInstanceOf[ExtensionWithConf])
+      .map(_.asInstanceOf[ExtensionWithConf])
+      .get
+    assert(extWithConf.conf eq conf)
+
+    class NestedExtension { }
+
+    val invalid = Seq(classOf[NestedExtension].getName())
+    intercept[SparkException] {
+      Utils.loadExtensions(classOf[Object], invalid, conf)
+    }
+
+    val error = Seq(classOf[ExtensionWithError].getName())
+    intercept[IllegalArgumentException] {
+      Utils.loadExtensions(classOf[Object], error, conf)
+    }
+
+    val wrongType = Seq(classOf[ListenerImpl].getName())
+    intercept[IllegalArgumentException] {
+      Utils.loadExtensions(classOf[Seq[_]], wrongType, conf)
+    }
+  }
+
 }
+
+private class SimpleExtension
+
+private class ExtensionWithConf(val conf: SparkConf)
+
+private class UnregisterableExtension {
+
+  throw new UnsupportedOperationException()
+
+}
+
+private class ExtensionWithError {
+
+  throw new IllegalArgumentException()
+
+}
+
+private class ListenerImpl extends SparkListener

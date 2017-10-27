@@ -17,10 +17,10 @@
 
 package org.apache.spark
 
+import br.uff.spark.DataflowUtils
 import org.scalatest.Matchers
 import org.scalatest.concurrent.TimeLimits._
 import org.scalatest.time.{Millis, Span}
-
 import org.apache.spark.security.EncryptionFunSuite
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.io.ChunkedByteBuffer

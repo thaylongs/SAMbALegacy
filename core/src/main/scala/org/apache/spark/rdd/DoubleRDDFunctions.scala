@@ -130,9 +130,10 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
     // Compute the minimum and the maximum
     val (max: Double, min: Double) = self.mapPartitionsWithTaskInfo { (items, task) =>
       Iterator(
-        DataElement.of(items.foldRight(Double.NegativeInfinity, Double.PositiveInfinity)
-        ((e: DataElement[Double], x: (Double, Double)) => (x._1.max(e.value), x._2.min(e.value))), null, true)
-      )
+        DataElement.of(
+        items.foldRight((Double.NegativeInfinity, Double.PositiveInfinity)
+        )((e: DataElement[Double], x: (Double, Double)) => (x._1.max(e.value), x._2.min(e.value)))
+      ,task,task.isIgnored))
     }.ignoreIt().reduce { (maxmin1, maxmin2) =>
       (maxmin1._1.max(maxmin2._1), maxmin1._2.min(maxmin2._2))
     }
