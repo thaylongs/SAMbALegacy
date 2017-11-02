@@ -17,8 +17,9 @@
 
 package org.apache.spark.graphx.impl
 
-import scala.reflect.{classTag, ClassTag}
+import br.uff.spark.DataElement
 
+import scala.reflect.{ClassTag, classTag}
 import org.apache.spark.{HashPartitioner, OneToOneDependency}
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
@@ -107,19 +108,22 @@ class EdgeRDDImpl[ED: ClassTag, VD: ClassTag] private[graphx] (
     val ed2Tag = classTag[ED2]
     val ed3Tag = classTag[ED3]
     this.withPartitionsRDD[ED3, VD](partitionsRDD.zipPartitions(other.partitionsRDD, true) {
-      (thisIter, otherIter) =>
-        val (pid, thisEPart) = thisIter.next()
-        val (_, otherEPart) = otherIter.next()
-        Iterator(Tuple2(pid, thisEPart.innerJoin(otherEPart)(f)(ed2Tag, ed3Tag)))
+      (thisIter, otherIter, task) =>
+        val thisNext  = thisIter.next()
+        val otherNext  = otherIter.next()
+        val (pid, thisEPart) = thisNext.value
+        val (_, otherEPart) = otherNext.value
+        Iterator(DataElement.of(Tuple2(pid, thisEPart.innerJoin(otherEPart)(f)(ed2Tag, ed3Tag)), task, task.isIgnored, thisNext, otherNext))
     })
   }
 
   def mapEdgePartitions[ED2: ClassTag, VD2: ClassTag](
       f: (PartitionID, EdgePartition[ED, VD]) => EdgePartition[ED2, VD2]): EdgeRDDImpl[ED2, VD2] = {
-    this.withPartitionsRDD[ED2, VD2](partitionsRDD.mapPartitions({ iter =>
+    this.withPartitionsRDD[ED2, VD2](partitionsRDD.mapPartitionsWithTaskInfo({ (iter, task) =>
       if (iter.hasNext) {
-        val (pid, ep) = iter.next()
-        Iterator(Tuple2(pid, f(pid, ep)))
+        val next = iter.next()
+        val (pid, ep) = next.value
+        Iterator(DataElement.of(Tuple2(pid, f(pid, ep)), task, task.isIgnored, next))
       } else {
         Iterator.empty
       }

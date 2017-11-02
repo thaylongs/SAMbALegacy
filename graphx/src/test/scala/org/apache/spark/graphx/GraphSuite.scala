@@ -17,6 +17,7 @@
 
 package org.apache.spark.graphx
 
+import br.uff.spark.DataElement
 import org.apache.spark.{SparkContext, SparkFunSuite}
 import org.apache.spark.graphx.Graph._
 import org.apache.spark.graphx.PartitionStrategy._
@@ -85,8 +86,8 @@ class GraphSuite extends SparkFunSuite with LocalSparkContext {
       }
       def nonemptyParts(graph: Graph[Int, Int]): RDD[List[Edge[Int]]] = {
         graph.edges.partitionsRDD.mapPartitions { iter =>
-          Iterator(iter.next()._2.iterator.toList)
-        }.filter(_.nonEmpty)
+          Iterator(iter.next().value._2.iterator.toList).map(a=>DataElement.of(a))
+        }.filter(_.nonEmpty).checkAndPersistProvenance()
       }
       val identicalEdges = List((0L, 1L), (0L, 1L))
       val canonicalEdges = List((0L, 1L), (1L, 0L))
@@ -120,8 +121,8 @@ class GraphSuite extends SparkFunSuite with LocalSparkContext {
       val bound = 2 * math.sqrt(p)
       // Each vertex should be replicated to at most 2 * sqrt(p) partitions
       val partitionSets = partitionedGraph.edges.partitionsRDD.mapPartitions { iter =>
-        val part = iter.next()._2
-        Iterator((part.iterator.flatMap(e => Iterator(e.srcId, e.dstId))).toSet)
+        val part = iter.next().value._2
+        Iterator((part.iterator.flatMap(e => Iterator(e.srcId, e.dstId))).toSet).map(a=>DataElement.of(a))
       }.collect
       if (!verts.forall(id => partitionSets.count(_.contains(id)) <= bound)) {
         val numFailures = verts.count(id => partitionSets.count(_.contains(id)) > bound)
@@ -132,8 +133,8 @@ class GraphSuite extends SparkFunSuite with LocalSparkContext {
       }
       // This should not be true for the default hash partitioning
       val partitionSetsUnpartitioned = graph.edges.partitionsRDD.mapPartitions { iter =>
-        val part = iter.next()._2
-        Iterator((part.iterator.flatMap(e => Iterator(e.srcId, e.dstId))).toSet)
+        val part = iter.next().value._2
+        Iterator((part.iterator.flatMap(e => Iterator(e.srcId, e.dstId))).toSet).map(a=>DataElement.of(a))
       }.collect
       assert(verts.exists(id => partitionSetsUnpartitioned.count(_.contains(id)) > bound))
 

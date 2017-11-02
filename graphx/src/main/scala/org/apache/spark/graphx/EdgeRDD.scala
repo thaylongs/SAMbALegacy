@@ -17,9 +17,10 @@
 
 package org.apache.spark.graphx
 
+import br.uff.spark.DataElement
+
 import scala.language.existentials
 import scala.reflect.ClassTag
-
 import org.apache.spark.Dependency
 import org.apache.spark.Partition
 import org.apache.spark.SparkContext
@@ -46,10 +47,11 @@ abstract class EdgeRDD[ED](
 
   override protected def getPartitions: Array[Partition] = partitionsRDD.partitions
 
-  override def compute(part: Partition, context: TaskContext): Iterator[Edge[ED]] = {
+  override def compute(part: Partition, context: TaskContext): Iterator[DataElement[Edge[ED]]] = {
     val p = firstParent[(PartitionID, EdgePartition[ED, _])].iterator(part, context)
     if (p.hasNext) {
-      p.next()._2.iterator.map(_.copy())
+      val next = p.next()
+      next.value._2.iterator.map(a => DataElement.of(a.copy(), task, task.isIgnored, next))
     } else {
       Iterator.empty
     }
@@ -102,12 +104,13 @@ object EdgeRDD {
    * @tparam VD the type of the vertex attributes that may be joined with the returned EdgeRDD
    */
   def fromEdges[ED: ClassTag, VD: ClassTag](edges: RDD[Edge[ED]]): EdgeRDDImpl[ED, VD] = {
-    val edgePartitions = edges.mapPartitionsWithIndex { (pid, iter) =>
+    val edgePartitions = edges.mapPartitionsWithIndexWithTask { (pid, iter, task) =>
       val builder = new EdgePartitionBuilder[ED, VD]
-      iter.foreach { e =>
-        builder.add(e.srcId, e.dstId, e.attr)
+      val cache = iter.toList
+      cache.foreach { e =>
+        builder.add(e.value.srcId, e.value.dstId, e.value.attr)
       }
-      Iterator((pid, builder.toEdgePartition))
+      Iterator(DataElement.of((pid, builder.toEdgePartition), task, task.isIgnored, cache: _*))
     }
     EdgeRDD.fromEdgePartitions(edgePartitions)
   }

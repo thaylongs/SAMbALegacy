@@ -17,10 +17,13 @@
 
 package org.apache.spark.graphx
 
+import br.uff.spark.DataElement
 import org.apache.spark.SparkContext
 import org.apache.spark.graphx.impl.{EdgePartitionBuilder, GraphImpl}
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.StorageLevel
+
+import scala.collection.mutable
 
 /**
  * Provides utilities for loading [[Graph]]s from files.
@@ -72,11 +75,13 @@ object GraphLoader extends Logging {
       } else {
         sc.textFile(path)
       }
-    val edges = lines.mapPartitionsWithIndex { (pid, iter) =>
+    val edges = lines.mapPartitionsWithIndexWithTask { (pid, iter, task) =>
       val builder = new EdgePartitionBuilder[Int, Int]
+      val dependencies = new mutable.MutableList[DataElement[_]]
       iter.foreach { line =>
-        if (!line.isEmpty && line(0) != '#') {
-          val lineArray = line.split("\\s+")
+        if (!line.value.isEmpty && line.value(0) != '#') {
+          dependencies+=line
+          val lineArray = line.value.split("\\s+")
           if (lineArray.length < 2) {
             throw new IllegalArgumentException("Invalid line: " + line)
           }
@@ -89,7 +94,7 @@ object GraphLoader extends Logging {
           }
         }
       }
-      Iterator((pid, builder.toEdgePartition))
+      Iterator(DataElement.of((pid, builder.toEdgePartition), task, task.isIgnored, dependencies: _*))
     }.persist(edgeStorageLevel).setName("GraphLoader.edgeListFile - edges (%s)".format(path))
     edges.count()
 

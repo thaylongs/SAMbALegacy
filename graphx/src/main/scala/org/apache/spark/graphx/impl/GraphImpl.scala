@@ -17,8 +17,9 @@
 
 package org.apache.spark.graphx.impl
 
-import scala.reflect.{classTag, ClassTag}
+import br.uff.spark.DataElement
 
+import scala.reflect.{ClassTag, classTag}
 import org.apache.spark.HashPartitioner
 import org.apache.spark.graphx._
 import org.apache.spark.graphx.util.BytecodeUtils
@@ -45,9 +46,11 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
   /** Return an RDD that brings edges together with their source and destination vertices. */
   @transient override lazy val triplets: RDD[EdgeTriplet[VD, ED]] = {
     replicatedVertexView.upgrade(vertices, true, true)
-    replicatedVertexView.edges.partitionsRDD.mapPartitions(_.flatMap {
-      case (pid, part) => part.tripletIterator()
-    })
+    replicatedVertexView.edges.partitionsRDD.mapPartitionsWithTaskInfo({(iter, task)=>
+      iter.flatMap { element =>
+        val (pid, part) = element.value
+        part.tripletIterator().map(a => DataElement.of(a, task, task.isIgnored, element))
+    }})
   }
 
   override def persist(newLevel: StorageLevel): Graph[VD, ED] = {
@@ -103,14 +106,16 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
       (part, (e.srcId, e.dstId, e.attr))
     }
       .partitionBy(new HashPartitioner(numPartitions))
-      .mapPartitionsWithIndex( { (pid, iter) =>
+      .mapPartitionsWithIndexWithTask( { (pid, iter, task) =>
         val builder = new EdgePartitionBuilder[ED, VD]()(edTag, vdTag)
-        iter.foreach { message =>
-          val data = message._2
+        val cache = iter.toArray
+        cache.foreach { message =>
+          val data = message.value._2
           builder.add(data._1, data._2, data._3)
         }
         val edgePartition = builder.toEdgePartition
-        Iterator((pid, edgePartition))
+        val result = (pid, edgePartition)
+        Iterator(DataElement.of(result, task, task.isIgnored, cache: _*))
       }, preservesPartitioning = true)).cache()
     GraphImpl.fromExistingRDDs(vertices.withEdges(newEdges), newEdges)
   }
@@ -204,38 +209,38 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
     val activeDirectionOpt = activeSetOpt.map(_._2)
 
     // Map and combine.
-    val preAgg = view.edges.partitionsRDD.mapPartitions(_.flatMap {
-      case (pid, edgePartition) =>
+    val preAgg = view.edges.partitionsRDD.mapPartitionsWithTaskInfo((iter,task)=>iter.flatMap { element =>
+      val (pid, edgePartition) = element.value
         // Choose scan method
         val activeFraction = edgePartition.numActives.getOrElse(0) / edgePartition.indexSize.toFloat
-        activeDirectionOpt match {
-          case Some(EdgeDirection.Both) =>
-            if (activeFraction < 0.8) {
-              edgePartition.aggregateMessagesIndexScan(sendMsg, mergeMsg, tripletFields,
-                EdgeActiveness.Both)
-            } else {
-              edgePartition.aggregateMessagesEdgeScan(sendMsg, mergeMsg, tripletFields,
-                EdgeActiveness.Both)
-            }
-          case Some(EdgeDirection.Either) =>
-            // TODO: Because we only have a clustered index on the source vertex ID, we can't filter
-            // the index here. Instead we have to scan all edges and then do the filter.
+      activeDirectionOpt match {
+        case Some(EdgeDirection.Both) =>
+          if (activeFraction < 0.8) {
+            edgePartition.aggregateMessagesIndexScan(sendMsg, mergeMsg, tripletFields,
+              EdgeActiveness.Both).map(a => DataElement.of(a, task, task.isIgnored, element))
+          } else {
             edgePartition.aggregateMessagesEdgeScan(sendMsg, mergeMsg, tripletFields,
-              EdgeActiveness.Either)
-          case Some(EdgeDirection.Out) =>
-            if (activeFraction < 0.8) {
-              edgePartition.aggregateMessagesIndexScan(sendMsg, mergeMsg, tripletFields,
-                EdgeActiveness.SrcOnly)
-            } else {
-              edgePartition.aggregateMessagesEdgeScan(sendMsg, mergeMsg, tripletFields,
-                EdgeActiveness.SrcOnly)
-            }
-          case Some(EdgeDirection.In) =>
+              EdgeActiveness.Both).map(a => DataElement.of(a, task, task.isIgnored, element))
+          }
+        case Some(EdgeDirection.Either) =>
+          // TODO: Because we only have a clustered index on the source vertex ID, we can't filter
+          // the index here. Instead we have to scan all edges and then do the filter.
+          edgePartition.aggregateMessagesEdgeScan(sendMsg, mergeMsg, tripletFields,
+            EdgeActiveness.Either).map(a => DataElement.of(a, task, task.isIgnored, element))
+        case Some(EdgeDirection.Out) =>
+          if (activeFraction < 0.8) {
+            edgePartition.aggregateMessagesIndexScan(sendMsg, mergeMsg, tripletFields,
+              EdgeActiveness.SrcOnly).map(a => DataElement.of(a, task, task.isIgnored, element))
+          } else {
             edgePartition.aggregateMessagesEdgeScan(sendMsg, mergeMsg, tripletFields,
-              EdgeActiveness.DstOnly)
-          case _ => // None
-            edgePartition.aggregateMessagesEdgeScan(sendMsg, mergeMsg, tripletFields,
-              EdgeActiveness.Neither)
+              EdgeActiveness.SrcOnly).map(a => DataElement.of(a, task, task.isIgnored, element))
+          }
+        case Some(EdgeDirection.In) =>
+          edgePartition.aggregateMessagesEdgeScan(sendMsg, mergeMsg, tripletFields,
+            EdgeActiveness.DstOnly).map(a => DataElement.of(a, task, task.isIgnored, element))
+        case _ => // None
+          edgePartition.aggregateMessagesEdgeScan(sendMsg, mergeMsg, tripletFields,
+            EdgeActiveness.Neither).map(a => DataElement.of(a, task, task.isIgnored, element))
         }
     }).setName("GraphImpl.aggregateMessages - preAgg")
 

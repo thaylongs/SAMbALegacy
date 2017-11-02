@@ -17,17 +17,18 @@
 
 package org.apache.spark.graphx.impl
 
-import scala.reflect.ClassTag
+import br.uff.spark.{DataElement, DataflowUtils}
 
+import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.graphx._
 import org.apache.spark.rdd._
 import org.apache.spark.storage.StorageLevel
 
-class VertexRDDImpl[VD] private[graphx] (
-    @transient val partitionsRDD: RDD[ShippableVertexPartition[VD]],
-    val targetStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
-  (implicit override protected val vdTag: ClassTag[VD])
+class VertexRDDImpl[VD] private[graphx](
+                                         @transient val partitionsRDD: RDD[ShippableVertexPartition[VD]],
+                                         val targetStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
+                                       (implicit override protected val vdTag: ClassTag[VD])
   extends VertexRDD[VD](partitionsRDD.context, List(new OneToOneDependency(partitionsRDD))) {
 
   require(partitionsRDD.partitioner.isDefined)
@@ -47,12 +48,13 @@ class VertexRDDImpl[VD] private[graphx] (
     }
     this
   }
+
   setName("VertexRDD")
 
   /**
-   * Persists the vertex partitions at the specified storage level, ignoring any existing target
-   * storage level.
-   */
+    * Persists the vertex partitions at the specified storage level, ignoring any existing target
+    * storage level.
+    */
   override def persist(newLevel: StorageLevel): this.type = {
     partitionsRDD.persist(newLevel)
     this
@@ -64,8 +66,8 @@ class VertexRDDImpl[VD] private[graphx] (
   }
 
   /**
-   * Persists the vertex partitions at `targetStorageLevel`, which defaults to MEMORY_ONLY.
-   */
+    * Persists the vertex partitions at `targetStorageLevel`, which defaults to MEMORY_ONLY.
+    */
   override def cache(): this.type = {
     partitionsRDD.persist(targetStorageLevel)
     this
@@ -91,9 +93,11 @@ class VertexRDDImpl[VD] private[graphx] (
   }
 
   override private[graphx] def mapVertexPartitions[VD2: ClassTag](
-      f: ShippableVertexPartition[VD] => ShippableVertexPartition[VD2])
-    : VertexRDD[VD2] = {
-    val newPartitionsRDD = partitionsRDD.mapPartitions(_.map(f), preservesPartitioning = true)
+                                                                   f: ShippableVertexPartition[VD] => ShippableVertexPartition[VD2])
+  : VertexRDD[VD2] = {
+    val newPartitionsRDD = partitionsRDD.mapPartitionsWithTaskInfo({ (iter, task) =>
+      iter.map(element => DataElement.of(f.apply(element.value), task, task.isIgnored, element))
+    }, preservesPartitioning = true)
     this.withPartitionsRDD(newPartitionsRDD)
   }
 
@@ -107,22 +111,27 @@ class VertexRDDImpl[VD] private[graphx] (
     minus(this.aggregateUsingIndex(other, (a: VD, b: VD) => a))
   }
 
-  override def minus (other: VertexRDD[VD]): VertexRDD[VD] = {
+  override def minus(other: VertexRDD[VD]): VertexRDD[VD] = {
     other match {
       case other: VertexRDD[_] if this.partitioner == other.partitioner =>
         this.withPartitionsRDD[VD](
           partitionsRDD.zipPartitions(
             other.partitionsRDD, preservesPartitioning = true) {
-            (thisIter, otherIter) =>
+            (thisIter, otherIter, task) =>
               val thisPart = thisIter.next()
               val otherPart = otherIter.next()
-              Iterator(thisPart.minus(otherPart))
+              Iterator(DataElement.of(thisPart.value.minus(otherPart.value), task, task.isIgnored, thisPart, otherPart))
           })
       case _ =>
         this.withPartitionsRDD[VD](
           partitionsRDD.zipPartitions(
             other.partitionBy(this.partitioner.get), preservesPartitioning = true) {
-            (partIter, msgs) => partIter.map(_.minus(msgs))
+            (partIter, msgs, task) =>
+              val cache = msgs.toList
+              partIter.map({element =>
+                val dependencies = Seq(element)++:cache
+                DataElement.of(element.value.minus(DataflowUtils.extractFromIterator(cache.toIterator)), task, task.isIgnored, dependencies: _*)
+              })
           }
         )
     }
@@ -141,79 +150,90 @@ class VertexRDDImpl[VD] private[graphx] (
     }
     val newPartitionsRDD = partitionsRDD.zipPartitions(
       otherPartition, preservesPartitioning = true
-    ) { (thisIter, otherIter) =>
+    ) { (thisIter, otherIter, task) =>
       val thisPart = thisIter.next()
       val otherPart = otherIter.next()
-      Iterator(thisPart.diff(otherPart))
+      Iterator(DataElement.of(thisPart.value.diff(otherPart.value), task, task.isIgnored, thisPart, otherPart))
     }
     this.withPartitionsRDD(newPartitionsRDD)
   }
 
   override def leftZipJoin[VD2: ClassTag, VD3: ClassTag]
-      (other: VertexRDD[VD2])(f: (VertexId, VD, Option[VD2]) => VD3): VertexRDD[VD3] = {
+  (other: VertexRDD[VD2])(f: (VertexId, VD, Option[VD2]) => VD3): VertexRDD[VD3] = {
     val newPartitionsRDD = partitionsRDD.zipPartitions(
       other.partitionsRDD, preservesPartitioning = true
-    ) { (thisIter, otherIter) =>
+    ) { (thisIter, otherIter, task) =>
       val thisPart = thisIter.next()
       val otherPart = otherIter.next()
-      Iterator(thisPart.leftJoin(otherPart)(f))
+      Iterator(DataElement.of(thisPart.value.leftJoin(otherPart.value)(f), task, task.isIgnored, thisPart, otherPart))
     }
     this.withPartitionsRDD(newPartitionsRDD)
   }
 
   override def leftJoin[VD2: ClassTag, VD3: ClassTag]
-      (other: RDD[(VertexId, VD2)])
-      (f: (VertexId, VD, Option[VD2]) => VD3)
-    : VertexRDD[VD3] = {
+  (other: RDD[(VertexId, VD2)])
+  (f: (VertexId, VD, Option[VD2]) => VD3)
+  : VertexRDD[VD3] = {
     // Test if the other vertex is a VertexRDD to choose the optimal join strategy.
     // If the other set is a VertexRDD then we use the much more efficient leftZipJoin
     other match {
       case other: VertexRDD[_] if this.partitioner == other.partitioner =>
-        leftZipJoin(other)(f)
+        leftZipJoin[VD2,VD3](other.asInstanceOf[VertexRDD[VD2]])(f)//pode dar problema aqui
       case _ =>
         this.withPartitionsRDD[VD3](
           partitionsRDD.zipPartitions(
             other.partitionBy(this.partitioner.get), preservesPartitioning = true) {
-            (partIter, msgs) => partIter.map(_.leftJoin(msgs)(f))
+            (partIter, msgs, task) =>
+              val cache = msgs.toList
+              partIter.map({element =>
+                val dependencies = Seq(element) ++: cache
+                DataElement.of(element.value.leftJoin(DataflowUtils.extractFromIterator(cache.toIterator))(f), task, task.isIgnored, dependencies: _*)
+            })
           }
         )
     }
   }
 
   override def innerZipJoin[U: ClassTag, VD2: ClassTag](other: VertexRDD[U])
-      (f: (VertexId, VD, U) => VD2): VertexRDD[VD2] = {
+                                                       (f: (VertexId, VD, U) => VD2): VertexRDD[VD2] = {
     val newPartitionsRDD = partitionsRDD.zipPartitions(
       other.partitionsRDD, preservesPartitioning = true
-    ) { (thisIter, otherIter) =>
+    ) { (thisIter, otherIter, task) =>
       val thisPart = thisIter.next()
       val otherPart = otherIter.next()
-      Iterator(thisPart.innerJoin(otherPart)(f))
+      Iterator(DataElement.of(thisPart.value.innerJoin(otherPart.value)(f), task, task.isIgnored, thisPart, otherPart))
     }
     this.withPartitionsRDD(newPartitionsRDD)
   }
 
   override def innerJoin[U: ClassTag, VD2: ClassTag](other: RDD[(VertexId, U)])
-      (f: (VertexId, VD, U) => VD2): VertexRDD[VD2] = {
+                                                    (f: (VertexId, VD, U) => VD2): VertexRDD[VD2] = {
     // Test if the other vertex is a VertexRDD to choose the optimal join strategy.
     // If the other set is a VertexRDD then we use the much more efficient innerZipJoin
     other match {
       case other: VertexRDD[_] if this.partitioner == other.partitioner =>
-        innerZipJoin(other)(f)
+        innerZipJoin[U,VD2](other.asInstanceOf[VertexRDD[U]])(f)//pode dar problema aqui
       case _ =>
         this.withPartitionsRDD(
           partitionsRDD.zipPartitions(
             other.partitionBy(this.partitioner.get), preservesPartitioning = true) {
-            (partIter, msgs) => partIter.map(_.innerJoin(msgs)(f))
+            (partIter, msgs, task) =>
+              val cache = msgs.toList
+              partIter.map(element => DataElement.of(element.value.innerJoin(DataflowUtils.extractFromIterator(cache.toIterator))(f), task, task.isIgnored, (Seq(element) ++: cache): _*))
           }
         )
     }
   }
 
   override def aggregateUsingIndex[VD2: ClassTag](
-      messages: RDD[(VertexId, VD2)], reduceFunc: (VD2, VD2) => VD2): VertexRDD[VD2] = {
+                                                   messages: RDD[(VertexId, VD2)], reduceFunc: (VD2, VD2) => VD2): VertexRDD[VD2] = {
     val shuffled = messages.partitionBy(this.partitioner.get)
-    val parts = partitionsRDD.zipPartitions(shuffled, true) { (thisIter, msgIter) =>
-      thisIter.map(_.aggregateUsingIndex(msgIter, reduceFunc))
+    val parts = partitionsRDD.zipPartitions(shuffled, true) { (thisIter, msgIter, task) =>
+      val cache = msgIter.toList
+      thisIter.map({element=>
+        val dependencies = Seq(element)++:cache
+        DataElement.of(element.value.aggregateUsingIndex(DataflowUtils.extractFromIterator(cache.toIterator), reduceFunc), task, task.isIgnored, dependencies: _*)
+      })
     }
     this.withPartitionsRDD[VD2](parts)
   }
@@ -224,31 +244,47 @@ class VertexRDDImpl[VD] private[graphx] (
   override def withEdges(edges: EdgeRDD[_]): VertexRDD[VD] = {
     val routingTables = VertexRDD.createRoutingTables(edges, this.partitioner.get)
     val vertexPartitions = partitionsRDD.zipPartitions(routingTables, true) {
-      (partIter, routingTableIter) =>
-        val routingTable =
-          if (routingTableIter.hasNext) routingTableIter.next() else RoutingTablePartition.empty
-        partIter.map(_.withRoutingTable(routingTable))
+      (partIter, routingTableIter, task) =>
+        var dependency = Seq[DataElement[_]]()
+        val routingTable = if(routingTableIter.hasNext){
+          val next =  routingTableIter.next()
+          dependency = Seq(next)
+          next.value
+        }else{
+          RoutingTablePartition.empty
+        }
+        partIter.map({element=>
+          DataElement.of(element.value.withRoutingTable(routingTable), task, task.isIgnored, (Seq(element) ++: dependency): _*)
+        })
     }
     this.withPartitionsRDD(vertexPartitions)
   }
 
   override private[graphx] def withPartitionsRDD[VD2: ClassTag](
-      partitionsRDD: RDD[ShippableVertexPartition[VD2]]): VertexRDD[VD2] = {
+                                                                 partitionsRDD: RDD[ShippableVertexPartition[VD2]]): VertexRDD[VD2] = {
     new VertexRDDImpl(partitionsRDD, this.targetStorageLevel)
   }
 
   override private[graphx] def withTargetStorageLevel(
-      targetStorageLevel: StorageLevel): VertexRDD[VD] = {
+                                                       targetStorageLevel: StorageLevel): VertexRDD[VD] = {
     new VertexRDDImpl(this.partitionsRDD, targetStorageLevel)
   }
 
   override private[graphx] def shipVertexAttributes(
-      shipSrc: Boolean, shipDst: Boolean): RDD[(PartitionID, VertexAttributeBlock[VD])] = {
-    partitionsRDD.mapPartitions(_.flatMap(_.shipVertexAttributes(shipSrc, shipDst)))
+                                                     shipSrc: Boolean, shipDst: Boolean): RDD[(PartitionID, VertexAttributeBlock[VD])] = {
+    partitionsRDD.mapPartitionsWithTaskInfo { (iter, task) =>
+      iter.flatMap { element =>
+        element.value.shipVertexAttributes(shipSrc, shipDst).map(a => DataElement.of(a, task, task.isIgnored, element))
+      }
+    }
   }
 
   override private[graphx] def shipVertexIds(): RDD[(PartitionID, Array[VertexId])] = {
-    partitionsRDD.mapPartitions(_.flatMap(_.shipVertexIds()))
+    partitionsRDD.mapPartitionsWithTaskInfo { (iter, task) =>
+      iter.flatMap { element =>
+        element.value.shipVertexIds().map(a => DataElement.of(a, task, task.isIgnored, element))
+      }
+    }
   }
 
 }

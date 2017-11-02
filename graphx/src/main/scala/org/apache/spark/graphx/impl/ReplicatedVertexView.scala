@@ -17,8 +17,9 @@
 
 package org.apache.spark.graphx.impl
 
-import scala.reflect.ClassTag
+import br.uff.spark.{DataElement, DataflowUtils}
 
+import scala.reflect.ClassTag
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 
@@ -68,10 +69,13 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
             includeSrc, includeDst, shipSrc, shipDst))
           .partitionBy(edges.partitioner.get)
       val newEdges = edges.withPartitionsRDD(edges.partitionsRDD.zipPartitions(shippedVerts) {
-        (ePartIter, shippedVertsIter) => ePartIter.map {
-          case (pid, edgePartition) =>
-            (pid, edgePartition.updateVertices(shippedVertsIter.flatMap(_._2.iterator)))
-        }
+        (ePartIter, shippedVertsIter, task) =>
+          val cache = shippedVertsIter.toList
+          ePartIter.map { element =>
+            val (pid, edgePartition) = element.value
+            val result = (pid, edgePartition.updateVertices(DataflowUtils.extractFromIterator(cache.toIterator).flatMap(_._2.iterator)))
+            DataElement.of(result, task, task.isIgnored, (Seq(element) ++: cache): _*)
+          }
       })
       edges = newEdges
       hasSrcId = includeSrc
@@ -90,9 +94,12 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
       .partitionBy(edges.partitioner.get)
 
     val newEdges = edges.withPartitionsRDD(edges.partitionsRDD.zipPartitions(shippedActives) {
-      (ePartIter, shippedActivesIter) => ePartIter.map {
-        case (pid, edgePartition) =>
-          (pid, edgePartition.withActiveSet(shippedActivesIter.flatMap(_._2.iterator)))
+      (ePartIter, shippedActivesIter, task) =>
+        val cache = shippedActivesIter.toList
+        ePartIter.map { element =>
+          val (pid, edgePartition) = element.value
+          val result = (pid, edgePartition.withActiveSet(DataflowUtils.extractFromIterator(cache.toIterator).flatMap(_._2.iterator)))
+          DataElement.of(result, task, task.isIgnored,  (Seq(element) ++: cache): _*)
       }
     })
     new ReplicatedVertexView(newEdges, hasSrcId, hasDstId)
@@ -110,10 +117,13 @@ class ReplicatedVertexView[VD: ClassTag, ED: ClassTag](
       .partitionBy(edges.partitioner.get)
 
     val newEdges = edges.withPartitionsRDD(edges.partitionsRDD.zipPartitions(shippedVerts) {
-      (ePartIter, shippedVertsIter) => ePartIter.map {
-        case (pid, edgePartition) =>
-          (pid, edgePartition.updateVertices(shippedVertsIter.flatMap(_._2.iterator)))
-      }
+      (ePartIter, shippedVertsIter, task) =>
+        val cache = shippedVertsIter.toList
+        ePartIter.map { element =>
+          val (pid, edgePartition) = element.value
+          val result = (pid, edgePartition.updateVertices(DataflowUtils.extractFromIterator(cache.toIterator).flatMap(_._2.iterator)))
+          DataElement.of(result, task, task.isIgnored, (Seq(element) ++: cache): _*)
+        }
     })
     new ReplicatedVertexView(newEdges, hasSrcId, hasDstId)
   }
