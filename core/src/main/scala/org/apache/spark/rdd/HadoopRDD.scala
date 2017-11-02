@@ -294,7 +294,7 @@ class HadoopRDD[K, V](
         if (inputMetrics.recordsRead % SparkHadoopUtil.UPDATE_INPUT_METRICS_INTERVAL_RECORDS == 0) {
           updateBytesRead()
         }
-        DataElement.of((key, value), fileDE, task, task.isIgnored)
+        DataElement.of((key, value), task, task.isIgnored, fileDE)
       }
 
       override def close(): Unit = {

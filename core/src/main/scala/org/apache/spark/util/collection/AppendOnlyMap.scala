@@ -136,7 +136,7 @@ class AppendOnlyMap[K, V](taskOfRDD:Task, initialCapacity: Int = 64)
         nullValue = if (alreadyExistsDataelement != null)
           alreadyExistsDataelement.updateValue((realKey, newValue)).asInstanceOf[DataElement[(Any, V)]]
         else
-          DataElement.of((realKey, newValue), dataElement, taskOfRDD, taskOfRDD.isIgnored)
+          DataElement.of((realKey, newValue), taskOfRDD, taskOfRDD.isIgnored, dataElement)
       } else {
         val newValue = updateFunc(haveNullValue, nullValue.value._2)
         nullValue.updateValue((realKey, newValue)) // Possivel gerador de lixo  UFF
@@ -160,7 +160,7 @@ class AppendOnlyMap[K, V](taskOfRDD:Task, initialCapacity: Int = 64)
         data(2 * pos + 1) = if (alreadyExistsDataelement != null)
           alreadyExistsDataelement.updateValue((realKey, newValue))
         else
-          DataElement.of((realKey, newValue), dataElement, taskOfRDD, taskOfRDD.isIgnored)
+          DataElement.of((realKey, newValue), taskOfRDD, taskOfRDD.isIgnored, dataElement)
         incrementSize()
         return newValue
       } else if (k.eq(curKey) || k.equals(curKey)) {

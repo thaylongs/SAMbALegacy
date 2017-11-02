@@ -134,7 +134,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   }
 
 
-  override def allFilesOfExecution(id: UUID, onRead: (String, String) => Unit) = {
+  override def allFilesOfExecution(id: UUID, onRead: (String, String) => Unit): Unit = {
     val sqlDeleteDependencies = ""
     val stmt = con.prepare(sqlDeleteDependencies)
       .bind(id)
@@ -147,7 +147,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   }
 
 
-  override def allRelationshipBetweenDataElement(id: UUID, onRead: (String, String) => Unit) = {
+  override def allRelationshipBetweenDataElement(id: UUID, onRead: (String, String) => Unit): Unit = {
     val sqlDeleteDependencies = "SELECT  source, target from dfanalyzer.\"DependenciesOfDataElement\" WHERE \"executionID\" = ?"
     val stmt = con.prepare(sqlDeleteDependencies)
       .bind(id)

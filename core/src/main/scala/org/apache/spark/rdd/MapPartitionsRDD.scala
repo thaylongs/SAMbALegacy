@@ -94,7 +94,7 @@ private[spark] class FilterMapPartitionsRDD[T: ClassTag](
 
       def next() = if (hasNext) {
         hdDefined = false;
-        DataElement.of(hd.value, hd, task, task.isIgnored)
+        DataElement.of(hd.value, task, task.isIgnored, hd)
       } else empty.next()
     }
   }

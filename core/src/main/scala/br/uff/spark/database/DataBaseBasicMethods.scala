@@ -23,7 +23,7 @@ trait DataBaseBasicMethods {
 
   def deleteDataElement(dataElement: DataElement[_ <: Any]): Unit = {}
 
-  def allFilesOfExecution(id: UUID, onRead: (String, String) => Unit) = {}
+  def allFilesOfExecution(id: UUID, onRead: (String, String) => Unit): Unit = {}
 
-  def allRelationshipBetweenDataElement(id: UUID, onRead: (String, String) => Unit) = {}
+  def allRelationshipBetweenDataElement(id: UUID, onRead: (String, String) => Unit): Unit = {}
 }

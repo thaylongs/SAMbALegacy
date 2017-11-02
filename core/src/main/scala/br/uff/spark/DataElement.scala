@@ -3,6 +3,7 @@ package br.uff.spark
 import java.io.Serializable
 import java.util.UUID
 
+import scala.collection.JavaConverters._
 import scala.beans.BeanProperty
 import scala.collection.mutable
 
@@ -10,9 +11,8 @@ object DataElement {
 
   def dummy[W](element: W): DataElement[W] = {
     val result = new DataElement[W](element, null, true)
-    result.dependenciesIDS=null
-    result.id=null
-//    result.stringValue=null
+    result.dependenciesIDS = null
+    result.id = null
     result
   }
 
@@ -25,31 +25,8 @@ object DataElement {
     result
   }
 
-  def of[W](element: W, dependencie: UUID, task: Task): DataElement[W] = of(element, dependencie, task, false)
-
-  def of[W](element: W, dependencie: UUID, task: Task, ignore: Boolean): DataElement[W] = {
-    val result = new DataElement(element, task, ignore)
-    result.dependenciesIDS += dependencie
-    if (!ignore)
-      result.persist
-    else
-      throw new Exception("Houston we have a problem - um objeto ignorado foi add ")
-    result
-  }
-
-  def of[W](element: W, dependencie: DataElement[_ <: Any], task: Task, ignore: Boolean = false): DataElement[W] = {
-    val result = new DataElement(element, task, ignore)
-    if (dependencie.ignore) {
-      for (dependencieID <- dependencie.dependenciesIDS) {
-        result.dependenciesIDS += dependencieID
-      }
-    } else {
-      result.dependenciesIDS += dependencie.id
-    }
-    if (!ignore)
-      result.persist
-    result
-  }
+  def of[X,Z](element: X, task: Task, ignore: Boolean, dependencies: java.util.List[DataElement[Z]]): DataElement[X] =
+    of(element, task, ignore, dependencies.asScala: _*)
 
   def of[W](element: W, task: Task, ignore: Boolean, dependencies: DataElement[_ <: Any]*): DataElement[W] = {
     val result = new DataElement(element, task, ignore)
@@ -82,9 +59,6 @@ class DataElement[T](var value: T, var task: Task, var ignore: Boolean = false) 
 
   @BeanProperty
   var id: UUID = UUID.randomUUID()
-
-//  @BeanProperty
-//  var stringValue: String = if (ignore || value == null) null else value.toString
 
   var dependenciesIDS = new mutable.MutableList[UUID]()
 
@@ -133,7 +107,6 @@ class DataElement[T](var value: T, var task: Task, var ignore: Boolean = false) 
   def updateValue(value: Any): DataElement[T] = {
     this.value = value.asInstanceOf[T]
     if (!ignore) {
-//      this.stringValue = value.toString
       DataflowProvenance.getInstance.update(this)
     }
     this

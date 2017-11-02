@@ -392,7 +392,7 @@ abstract class RDD[T: ClassTag](
   def map[U: ClassTag](f: T => U): RDD[U] = withScope {
     val cleanF = sc.clean(f)
     new MapPartitionsRDD[U, T](
-      this, (task, context, pid, iter) => iter.map(x => DataElement.of(cleanF.apply(x.value), x, task, task.isIgnored))
+      this, (task, context, pid, iter) => iter.map(x => DataElement.of(cleanF.apply(x.value), task, task.isIgnored, x))
     ).setTransformationType(TransformationType.MAP)
   }
 
@@ -407,7 +407,7 @@ abstract class RDD[T: ClassTag](
       new AbstractIterator[DataElement[U]] {
         override def hasNext = result.hasNext
 
-        override def next() = DataElement.of(result.next(), x, task, task.isIgnored)
+        override def next() = DataElement.of(result.next(), task, task.isIgnored, x)
       }
     })).setTransformationType(TransformationType.FLAT_MAP)
   }
@@ -859,25 +859,37 @@ abstract class RDD[T: ClassTag](
    * which should be `false` unless this is a pair RDD and the input function doesn't modify
    * the keys.
    */
-  private[spark] def mapPartitionsWithIndexInternal[U: ClassTag](
-      f: (Int, Iterator[DataElement[T]]) => Iterator[DataElement[U]],
+  private[spark] def mapPartitionsWithIndexInternalWithTaskInfo[U: ClassTag](
+      f: (Int, Iterator[DataElement[T]],Task) => Iterator[DataElement[U]],
       preservesPartitioning: Boolean = false): RDD[U] = withScope {
     new MapPartitionsRDD(
       this,
-      (rdd, context: TaskContext, index: Int, iter: Iterator[DataElement[T]]) => f(index, iter),
+      (task, context: TaskContext, index: Int, iter: Iterator[DataElement[T]]) => f(index, iter, task),
       preservesPartitioning)
+  }
+  
+  private[spark] def mapPartitionsWithIndexInternal[U: ClassTag](
+        f: (Int, Iterator[DataElement[T]]) => Iterator[DataElement[U]],
+        preservesPartitioning: Boolean = false): RDD[U] = withScope {
+    mapPartitionsWithIndexInternalWithTaskInfo((index, iter, task) => f(index, iter), preservesPartitioning)
   }
 
   /**
    * [performance] Spark's internal mapPartitions method that skips closure cleaning.
    */
-  private[spark] def mapPartitionsInternal[U: ClassTag](
-      f: Iterator[DataElement[T]] => Iterator[DataElement[U]],
+  private[spark] def mapPartitionsInternalWithTaskInfo[U: ClassTag](
+      f: (Iterator[DataElement[T]], Task) => Iterator[DataElement[U]],
       preservesPartitioning: Boolean = false): RDD[U] = withScope {
     new MapPartitionsRDD(
       this,
-      (rdd, context: TaskContext, index: Int, iter: Iterator[DataElement[T]]) => f(iter),
+      (task, context: TaskContext, index: Int, iter: Iterator[DataElement[T]]) => f(iter, task),
       preservesPartitioning)
+  }
+
+  private[spark] def mapPartitionsInternal[U: ClassTag](
+               f: Iterator[DataElement[T]] => Iterator[DataElement[U]],
+               preservesPartitioning: Boolean = false): RDD[U] = withScope {
+    mapPartitionsWithTaskInfo((iter, task) => f(iter), preservesPartitioning)
   }
 
   /**
