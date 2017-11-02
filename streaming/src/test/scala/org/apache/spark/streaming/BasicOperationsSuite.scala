@@ -19,12 +19,12 @@ package org.apache.spark.streaming
 
 import java.util.concurrent.ConcurrentLinkedQueue
 
+import br.uff.spark.{DataElement, DataflowUtils, Task}
+
 import scala.collection.mutable
 import scala.language.existentials
 import scala.reflect.ClassTag
-
 import org.scalatest.concurrent.Eventually.eventually
-
 import org.apache.spark.{HashPartitioner, SparkConf, SparkException}
 import org.apache.spark.rdd.{BlockRDD, RDD}
 import org.apache.spark.storage.StorageLevel
@@ -75,7 +75,7 @@ class BasicOperationsSuite extends TestSuiteBase {
     assert(numInputPartitions === 2, "Number of input partitions has been changed from 2")
     val input = Seq(1 to 4, 5 to 8, 9 to 12)
     val output = Seq(Seq(3, 7), Seq(11, 15), Seq(19, 23))
-    val operation = (r: DStream[Int]) => r.mapPartitions(x => Iterator(x.sum))
+    val operation = (r: DStream[Int]) => r.mapPartitions((x, task) => Iterator(DataElement.of(DataflowUtils.extractFromIterator(x).sum)))
     testOperation(input, operation, output, true)
   }
 
@@ -564,8 +564,11 @@ class BasicOperationsSuite extends TestSuiteBase {
       val updateFunc = (values: Seq[Int], state: Option[Int]) => {
         Some(values.sum + state.getOrElse(0))
       }
-      val newUpdateFunc = (iterator: Iterator[(String, Seq[Int], Option[Int])]) => {
-        iterator.flatMap(t => updateFunc(t._2, t._3).map(s => (t._1, s)))
+      val newUpdateFunc = (task: Task, iterator: Iterator[(DataElement[_<:Any],(String, Seq[Int], Option[Int]))]) => {
+        iterator.flatMap({element =>
+          val t  = element._2
+          updateFunc(t._2, t._3).map(s => DataElement.of((t._1, s), task, task.isIgnored, element._1))
+        })
       }
       s.map(x => (x, 1)).updateStateByKey[Int](newUpdateFunc,
         new HashPartitioner (numInputPartitions), true, initialRDD)

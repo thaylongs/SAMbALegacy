@@ -17,8 +17,9 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
+import br.uff.spark.{DataElement, Task}
 
+import scala.reflect.ClassTag
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -27,7 +28,7 @@ import org.apache.spark.streaming.{Duration, Time}
 private[streaming]
 class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
     parent: DStream[(K, V)],
-    updateFunc: (Time, Iterator[(K, Seq[V], Option[S])]) => Iterator[(K, S)],
+    updateFunc: (Time, Task, Iterator[(DataElement[_ <: Any], (K, Seq[V], Option[S]))]) => Iterator[DataElement[(K, S)]],
     partitioner: Partitioner,
     preservePartitioning: Boolean,
     initialRDD: Option[RDD[(K, S)]]
@@ -49,16 +50,17 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
     // first map the cogrouped tuple to tuples of required type,
     // and then apply the update function
     val updateFuncLocal = updateFunc
-    val finalFunc = (iterator: Iterator[(K, (Iterable[V], Iterable[S]))]) => {
-      val i = iterator.map { t =>
+    val finalFunc = (iterator: Iterator[DataElement[(K, (Iterable[V], Iterable[S]))]], task: Task) => {
+      val i = iterator.map { element =>
+        val t = element.value
         val itr = t._2._2.iterator
         val headOption = if (itr.hasNext) Some(itr.next()) else None
-        (t._1, t._2._1.toSeq, headOption)
+        (element, (t._1, t._2._1.toSeq, headOption))
       }
-      updateFuncLocal(batchTime, i)
+      updateFuncLocal(batchTime, task, i)
     }
     val cogroupedRDD = parentRDD.cogroup(prevStateRDD, partitioner)
-    val stateRDD = cogroupedRDD.mapPartitions(finalFunc, preservePartitioning)
+    val stateRDD = cogroupedRDD.mapPartitionsWithTaskInfo(finalFunc, preservePartitioning)
     Some(stateRDD)
   }
 
@@ -75,11 +77,11 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
           case None =>     // If parent RDD does not exist
             // Re-apply the update function to the old state RDD
             val updateFuncLocal = updateFunc
-            val finalFunc = (iterator: Iterator[(K, S)]) => {
-              val i = iterator.map(t => (t._1, Seq.empty[V], Option(t._2)))
-              updateFuncLocal(validTime, i)
+            val finalFunc = (iterator: Iterator[DataElement[(K, S)]], task: Task) => {
+              val i = iterator.map(t => (t, (t.value._1, Seq.empty[V], Option(t.value._2))))
+              updateFuncLocal(validTime, task, i)
             }
-            val stateRDD = prevStateRDD.mapPartitions(finalFunc, preservePartitioning)
+            val stateRDD = prevStateRDD.mapPartitionsWithTaskInfo(finalFunc, preservePartitioning)
             Some(stateRDD)
         }
 
@@ -93,13 +95,13 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
                 // first map the grouped tuple to tuples of required type,
                 // and then apply the update function
                 val updateFuncLocal = updateFunc
-                val finalFunc = (iterator: Iterator[(K, Iterable[V])]) => {
-                  updateFuncLocal (validTime,
-                    iterator.map (tuple => (tuple._1, tuple._2.toSeq, None)))
+                val finalFunc = (iterator: Iterator[DataElement[(K, Iterable[V])]], task: Task) => {
+                  updateFuncLocal(validTime, task,
+                    iterator.map(tuple => (tuple, (tuple.value._1, tuple.value._2.toSeq, None))))
                 }
 
                 val groupedRDD = parentRDD.groupByKey(partitioner)
-                val sessionRDD = groupedRDD.mapPartitions(finalFunc, preservePartitioning)
+                val sessionRDD = groupedRDD.mapPartitionsWithTaskInfo(finalFunc, preservePartitioning)
                 // logDebug("Generating state RDD for time " + validTime + " (first)")
                 Some (sessionRDD)
               case Some (initialStateRDD) =>

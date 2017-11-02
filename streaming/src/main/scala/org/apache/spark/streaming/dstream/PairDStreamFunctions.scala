@@ -17,13 +17,13 @@
 
 package org.apache.spark.streaming.dstream
 
+import br.uff.spark.{DataElement, Task}
+
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapred.{JobConf, OutputFormat}
 import org.apache.hadoop.mapreduce.{OutputFormat => NewOutputFormat}
-
 import org.apache.spark.{HashPartitioner, Partitioner}
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.rdd.RDD
@@ -434,8 +434,11 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       partitioner: Partitioner
     ): DStream[(K, S)] = ssc.withScope {
     val cleanedUpdateF = sparkContext.clean(updateFunc)
-    val newUpdateFunc = (iterator: Iterator[(K, Seq[V], Option[S])]) => {
-      iterator.flatMap(t => cleanedUpdateF(t._2, t._3).map(s => (t._1, s)))
+    val newUpdateFunc = (task: Task, iterator: Iterator[(DataElement[_<:Any],(K, Seq[V], Option[S]))]) => {
+      iterator.flatMap({ element =>
+        val t = element._2
+        cleanedUpdateF(t._2, t._3).map(s => DataElement.of((t._1, s), task, task.isIgnored, element._1))
+      })
     }
     updateStateByKey(newUpdateFunc, partitioner, true)
   }
@@ -455,12 +458,12 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @tparam S State type
    */
   def updateStateByKey[S: ClassTag](
-      updateFunc: (Iterator[(K, Seq[V], Option[S])]) => Iterator[(K, S)],
+      updateFunc: (Task, Iterator[(DataElement[_<:Any],(K, Seq[V], Option[S]))]) => Iterator[DataElement[(K, S)]],
       partitioner: Partitioner,
       rememberPartitioner: Boolean): DStream[(K, S)] = ssc.withScope {
     val cleanedFunc = ssc.sc.clean(updateFunc)
-    val newUpdateFunc = (_: Time, it: Iterator[(K, Seq[V], Option[S])]) => {
-      cleanedFunc(it)
+    val newUpdateFunc = (_: Time, task: Task, it: Iterator[(DataElement[_<:Any],(K, Seq[V], Option[S]))]) => {
+      cleanedFunc(task, it)
     }
     new StateDStream(self, newUpdateFunc, partitioner, rememberPartitioner, None)
   }
@@ -483,8 +486,11 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       initialRDD: RDD[(K, S)]
     ): DStream[(K, S)] = ssc.withScope {
     val cleanedUpdateF = sparkContext.clean(updateFunc)
-    val newUpdateFunc = (iterator: Iterator[(K, Seq[V], Option[S])]) => {
-      iterator.flatMap(t => cleanedUpdateF(t._2, t._3).map(s => (t._1, s)))
+    val newUpdateFunc = (task: Task, iterator: Iterator[(DataElement[_ <: Any], (K, Seq[V], Option[S]))]) => {
+      iterator.flatMap({ element =>
+        val t = element._2
+        cleanedUpdateF(t._2, t._3).map(s => DataElement.of((t._1, s), task, task.isIgnored, element._1))
+      })
     }
     updateStateByKey(newUpdateFunc, partitioner, true, initialRDD)
   }
@@ -505,13 +511,13 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * @tparam S State type
    */
   def updateStateByKey[S: ClassTag](
-      updateFunc: (Iterator[(K, Seq[V], Option[S])]) => Iterator[(K, S)],
+      updateFunc: (Task, Iterator[(DataElement[_ <: Any],(K, Seq[V], Option[S]))]) => Iterator[DataElement[(K, S)]],
       partitioner: Partitioner,
       rememberPartitioner: Boolean,
       initialRDD: RDD[(K, S)]): DStream[(K, S)] = ssc.withScope {
     val cleanedFunc = ssc.sc.clean(updateFunc)
-    val newUpdateFunc = (_: Time, it: Iterator[(K, Seq[V], Option[S])]) => {
-      cleanedFunc(it)
+    val newUpdateFunc = (_: Time, task: Task, it: Iterator[(DataElement[_ <: Any], (K, Seq[V], Option[S]))]) => {
+      cleanedFunc(task, it)
     }
     new StateDStream(self, newUpdateFunc, partitioner, rememberPartitioner, Some(initialRDD))
   }
@@ -532,8 +538,11 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       rememberPartitioner: Boolean,
       initialRDD: Option[RDD[(K, S)]] = None): DStream[(K, S)] = ssc.withScope {
     val cleanedFunc = ssc.sc.clean(updateFunc)
-    val newUpdateFunc = (time: Time, iterator: Iterator[(K, Seq[V], Option[S])]) => {
-      iterator.flatMap(t => cleanedFunc(time, t._1, t._2, t._3).map(s => (t._1, s)))
+    val newUpdateFunc = (time: Time, task: Task ,iterator: Iterator[(DataElement[_<:Any],(K, Seq[V], Option[S]))]) => {
+      iterator.flatMap({ element =>
+        val t = element._2
+        cleanedFunc(time, t._1, t._2, t._3).map(s => DataElement.of((t._1, s), task, task.isIgnored, element._1))
+      })
     }
     new StateDStream(self, newUpdateFunc, partitioner, rememberPartitioner, initialRDD)
   }

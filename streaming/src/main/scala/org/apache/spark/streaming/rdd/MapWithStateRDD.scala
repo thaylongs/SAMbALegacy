@@ -19,9 +19,10 @@ package org.apache.spark.streaming.rdd
 
 import java.io.{IOException, ObjectOutputStream}
 
+import br.uff.spark.{DataElement, DataflowUtils}
+
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{State, StateImpl, Time}
@@ -147,24 +148,30 @@ private[streaming] class MapWithStateRDD[K: ClassTag, V: ClassTag, S: ClassTag, 
   }
 
   override def compute(
-      partition: Partition, context: TaskContext): Iterator[MapWithStateRDDRecord[K, S, E]] = {
+      partition: Partition, context: TaskContext): Iterator[DataElement[MapWithStateRDDRecord[K, S, E]]] = {
 
     val stateRDDPartition = partition.asInstanceOf[MapWithStateRDDPartition]
     val prevStateRDDIterator = prevStateRDD.iterator(
       stateRDDPartition.previousSessionRDDPartition, context)
-    val dataIterator = partitionedDataRDD.iterator(
-      stateRDDPartition.partitionedDataRDDPartition, context)
+    val dataIteratorCache = partitionedDataRDD.iterator(
+      stateRDDPartition.partitionedDataRDDPartition, context).toList
 
-    val prevRecord = if (prevStateRDDIterator.hasNext) Some(prevStateRDDIterator.next()) else None
+    val prevRecordDE = if (prevStateRDDIterator.hasNext) prevStateRDDIterator.next() else null
+    val prevRecord = if(prevRecordDE==null) None else Some(prevRecordDE.value)
+
     val newRecord = MapWithStateRDDRecord.updateRecordWithData(
       prevRecord,
-      dataIterator,
+      DataflowUtils.extractFromIterator(dataIteratorCache.toIterator),
       mappingFunction,
       batchTime,
       timeoutThresholdTime,
       removeTimedoutData = doFullScan // remove timedout data only when full scan is enabled
     )
-    Iterator(newRecord)
+    var dependenciesList = if (prevRecordDE == null)
+      dataIteratorCache
+    else
+      dataIteratorCache ++: Seq(prevRecordDE)
+    Iterator(DataElement.of(newRecord, task, task.isIgnored, dependenciesList: _*))
   }
 
   override protected def getPartitions: Array[Partition] = {
@@ -190,10 +197,14 @@ private[streaming] object MapWithStateRDD {
       partitioner: Partitioner,
       updateTime: Time): MapWithStateRDD[K, V, S, E] = {
 
-    val stateRDD = pairRDD.partitionBy(partitioner).mapPartitions ({ iterator =>
+    val stateRDD = pairRDD.partitionBy(partitioner).mapPartitionsWithTaskInfo ({ (iterator, task) =>
       val stateMap = StateMap.create[K, S](SparkEnv.get.conf)
-      iterator.foreach { case (key, state) => stateMap.put(key, state, updateTime.milliseconds) }
-      Iterator(MapWithStateRDDRecord(stateMap, Seq.empty[E]))
+      val cache = iterator.toList
+      cache.foreach { elem =>
+        val (key, state) = elem.value
+        stateMap.put(key, state, updateTime.milliseconds)
+      }
+      Iterator(DataElement.of(MapWithStateRDDRecord(stateMap, Seq.empty[E]), task, task.isIgnored, cache: _*))
     }, preservesPartitioning = true)
 
     val emptyDataRDD = pairRDD.sparkContext.emptyRDD[(K, V)].partitionBy(partitioner)
@@ -210,12 +221,14 @@ private[streaming] object MapWithStateRDD {
       updateTime: Time): MapWithStateRDD[K, V, S, E] = {
 
     val pairRDD = rdd.map { x => (x._1, (x._2, x._3)) }
-    val stateRDD = pairRDD.partitionBy(partitioner).mapPartitions({ iterator =>
+    val stateRDD = pairRDD.partitionBy(partitioner).mapPartitionsWithTaskInfo({ (iterator, task) =>
       val stateMap = StateMap.create[K, S](SparkEnv.get.conf)
-      iterator.foreach { case (key, (state, updateTime)) =>
+      val cache = iterator.toList
+      cache.foreach { element=>
+        val (key, (state, updateTime)) = element.value
         stateMap.put(key, state, updateTime)
       }
-      Iterator(MapWithStateRDDRecord(stateMap, Seq.empty[E]))
+      Iterator(DataElement.of(MapWithStateRDDRecord(stateMap, Seq.empty[E]), task, task.isIgnored, cache: _*))
     }, preservesPartitioning = true)
 
     val emptyDataRDD = pairRDD.sparkContext.emptyRDD[(K, V)].partitionBy(partitioner)

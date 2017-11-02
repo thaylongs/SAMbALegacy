@@ -17,6 +17,7 @@
 
 package org.apache.spark.streaming.util
 
+import br.uff.spark.{DataElement, Task}
 import org.apache.spark.SparkContext
 import org.apache.spark.util.collection.OpenHashMap
 
@@ -26,12 +27,15 @@ object RawTextHelper {
   /**
    * Splits lines and counts the words.
    */
-  def splitAndCountPartitions(iter: Iterator[String]): Iterator[(String, Long)] = {
+  def splitAndCountPartitions(iter: Iterator[DataElement[String]], task: Task): Iterator[DataElement[(String, Long)]] = {
     val map = new OpenHashMap[String, Long]
     var i = 0
     var j = 0
-    while (iter.hasNext) {
-      val s = iter.next()
+    val iterCache = iter.toArray
+    val iterOfCache  = iterCache.toIterator
+    while (iterOfCache.hasNext) {
+      val next = iterOfCache.next()
+      val s = next.value
       i = 0
       while (i < s.length) {
         j = i
@@ -51,7 +55,7 @@ object RawTextHelper {
         case (k, v) => (k, v)
       }
     }
-    map.toIterator.map{case (k, v) => (k, v)}
+    map.toIterator.map { case (k, v) => DataElement.of((k, v), task, task.isIgnored, iterCache: _*) }//improve it thaylon
   }
 
   /**
@@ -100,7 +104,7 @@ object RawTextHelper {
     for (i <- 0 to 1) {
       sc.parallelize(1 to 200000, 1000)
         .map(_ % 1331).map(_.toString)
-        .mapPartitions(splitAndCountPartitions).reduceByKey(_ + _, 10)
+        .mapPartitionsWithTaskInfo(splitAndCountPartitions).reduceByKey(_ + _, 10)
         .count()
     }
   }

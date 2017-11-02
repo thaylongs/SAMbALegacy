@@ -20,6 +20,9 @@ package test.org.apache.spark.streaming;
 import java.io.Serializable;
 import java.util.*;
 
+import br.uff.spark.DataElement;
+import br.uff.spark.Task;
+import org.apache.spark.api.java.function.FlatMapFunction2;
 import org.apache.spark.api.java.function.Function3;
 import org.apache.spark.api.java.function.Function4;
 import org.apache.spark.streaming.Duration;
@@ -43,6 +46,8 @@ import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.streaming.api.java.JavaDStream;
 import org.apache.spark.streaming.api.java.JavaPairDStream;
 import org.apache.spark.streaming.api.java.JavaMapWithStateDStream;
+
+import javax.xml.crypto.Data;
 
 /**
  * Most of these tests replicate org.apache.spark.streaming.JavaAPISuite using java 8
@@ -98,12 +103,12 @@ public class Java8APISuite extends LocalJavaStreamingContext implements Serializ
       Arrays.asList("YANKEESRED SOX"));
 
     JavaDStream<String> stream = JavaTestUtils.attachTestInputStream(ssc, inputData, 1);
-    JavaDStream<String> mapped = stream.mapPartitions(in -> {
+    JavaDStream<String> mapped = stream.mapPartitions((in, task) -> {
       String out = "";
       while (in.hasNext()) {
-        out = out + in.next().toUpperCase(Locale.ROOT);
+        out = out + in.next().value().toUpperCase(Locale.ROOT);
       }
-      return Arrays.asList(out).iterator();
+      return Arrays.asList(DataElement.of(out, task, task.isIgnored())).iterator();
     });
     JavaTestUtils.attachTestOutputStream(mapped);
     List<List<String>> result = JavaTestUtils.runStreams(ssc, 2, 2);
@@ -519,11 +524,11 @@ public class Java8APISuite extends LocalJavaStreamingContext implements Serializ
     JavaDStream<Tuple2<String, Integer>> stream =
       JavaTestUtils.attachTestInputStream(ssc, inputData, 1);
     JavaPairDStream<String, Integer> pairStream = JavaPairDStream.fromJavaDStream(stream);
-    JavaPairDStream<Integer, String> reversed = pairStream.mapPartitionsToPair(in -> {
-      LinkedList<Tuple2<Integer, String>> out = new LinkedList<>();
+    JavaPairDStream<Integer, String> reversed = pairStream.mapPartitionsToPair((in, task) -> {
+      LinkedList<DataElement<Tuple2<Integer, String>>> out = new LinkedList<>();
       while (in.hasNext()) {
-        Tuple2<String, Integer> next = in.next();
-        out.add(next.swap());
+        Tuple2<String, Integer> next = in.next().value();
+        out.add(DataElement.of(next.swap()));
       }
       return out.iterator();
     });

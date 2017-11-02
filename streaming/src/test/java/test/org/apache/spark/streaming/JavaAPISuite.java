@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import br.uff.spark.DataElement;
 import org.apache.spark.streaming.Duration;
 import org.apache.spark.streaming.JavaCheckpointTestUtils;
 import org.apache.spark.streaming.JavaTestUtils;
@@ -264,13 +265,13 @@ public class JavaAPISuite extends LocalJavaStreamingContext implements Serializa
         Arrays.asList("YANKEESRED SOX"));
 
     JavaDStream<String> stream = JavaTestUtils.attachTestInputStream(ssc, inputData, 1);
-    JavaDStream<String> mapped = stream.mapPartitions(in -> {
-        StringBuilder out = new StringBuilder();
-        while (in.hasNext()) {
-          out.append(in.next().toUpperCase(Locale.ROOT));
-        }
-        return Arrays.asList(out.toString()).iterator();
-      });
+    JavaDStream<String> mapped = stream.mapPartitions((in, task) -> {
+      StringBuilder out = new StringBuilder();
+      while (in.hasNext()) {
+        out.append(in.next().value().toUpperCase(Locale.ROOT));
+      }
+      return Arrays.asList(DataElement.of(out.toString())).iterator();
+    });
     JavaTestUtils.attachTestOutputStream(mapped);
     List<List<String>> result = JavaTestUtils.runStreams(ssc, 2, 2);
 
@@ -831,11 +832,11 @@ public class JavaAPISuite extends LocalJavaStreamingContext implements Serializa
     JavaDStream<Tuple2<String, Integer>> stream =
       JavaTestUtils.attachTestInputStream(ssc, inputData, 1);
     JavaPairDStream<String, Integer> pairStream = JavaPairDStream.fromJavaDStream(stream);
-    JavaPairDStream<Integer, String> reversed = pairStream.mapPartitionsToPair(in -> {
-        List<Tuple2<Integer, String>> out = new LinkedList<>();
+    JavaPairDStream<Integer, String> reversed = pairStream.mapPartitionsToPair((in,task) -> {
+        List<DataElement<Tuple2<Integer, String>>> out = new LinkedList<>();
         while (in.hasNext()) {
-          Tuple2<String, Integer> next = in.next();
-          out.add(next.swap());
+          Tuple2<String, Integer> next = in.next().value();
+          out.add(DataElement.of(next.swap()));
         }
         return out.iterator();
       });
@@ -1636,11 +1637,11 @@ public class JavaAPISuite extends LocalJavaStreamingContext implements Serializa
       "localhost",
       12345,
       in -> {
-        List<String> out = new ArrayList<>();
+        List<DataElement<String>> out = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(
             new InputStreamReader(in, StandardCharsets.UTF_8))) {
           for (String line; (line = reader.readLine()) != null;) {
-            out.add(line);
+            out.add(DataElement.of(line));
           }
         }
         return out;

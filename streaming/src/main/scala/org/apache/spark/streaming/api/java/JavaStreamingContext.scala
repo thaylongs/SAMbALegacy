@@ -21,13 +21,13 @@ import java.io.{Closeable, InputStream}
 import java.lang.{Boolean => JBoolean}
 import java.util.{List => JList, Map => JMap}
 
+import br.uff.spark.DataElement
+
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce.{InputFormat => NewInputFormat}
-
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.api.java.{JavaPairRDD, JavaRDD, JavaSparkContext}
 import org.apache.spark.api.java.function.{Function => JFunction, Function2 => JFunction2}
@@ -192,10 +192,10 @@ class JavaStreamingContext(val ssc: StreamingContext) extends Closeable {
   def socketStream[T](
       hostname: String,
       port: Int,
-      converter: JFunction[InputStream, java.lang.Iterable[T]],
+      converter: JFunction[InputStream, java.lang.Iterable[DataElement[T]]],
       storageLevel: StorageLevel)
   : JavaReceiverInputDStream[T] = {
-    def fn: (InputStream) => Iterator[T] = (x: InputStream) => converter.call(x).iterator().asScala
+    def fn: (InputStream) => Iterator[DataElement[T]] = (x: InputStream) => converter.call(x).iterator().asScala
     implicit val cmt: ClassTag[T] =
       implicitly[ClassTag[AnyRef]].asInstanceOf[ClassTag[T]]
     ssc.socketStream(hostname, port, fn, storageLevel)

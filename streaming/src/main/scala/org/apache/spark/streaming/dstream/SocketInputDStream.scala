@@ -21,9 +21,10 @@ import java.io._
 import java.net.{ConnectException, Socket}
 import java.nio.charset.StandardCharsets
 
+import br.uff.spark.DataElement
+
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.StreamingContext
@@ -35,7 +36,7 @@ class SocketInputDStream[T: ClassTag](
     _ssc: StreamingContext,
     host: String,
     port: Int,
-    bytesToObjects: InputStream => Iterator[T],
+    bytesToObjects: InputStream => Iterator[DataElement[T]],
     storageLevel: StorageLevel
   ) extends ReceiverInputDStream[T](_ssc) {
 
@@ -46,10 +47,10 @@ class SocketInputDStream[T: ClassTag](
 
 private[streaming]
 class SocketReceiver[T: ClassTag](
-    host: String,
-    port: Int,
-    bytesToObjects: InputStream => Iterator[T],
-    storageLevel: StorageLevel
+                                   host: String,
+                                   port: Int,
+                                   bytesToObjects: InputStream => Iterator[DataElement[T]],
+                                   storageLevel: StorageLevel
   ) extends Receiver[T](storageLevel) with Logging {
 
   private var socket: Socket = _
@@ -113,16 +114,16 @@ object SocketReceiver  {
    * This methods translates the data from an inputstream (say, from a socket)
    * to '\n' delimited strings and returns an iterator to access the strings.
    */
-  def bytesToLines(inputStream: InputStream): Iterator[String] = {
+  def bytesToLines(inputStream: InputStream): Iterator[DataElement[String]] = {
     val dataInputStream = new BufferedReader(
       new InputStreamReader(inputStream, StandardCharsets.UTF_8))
-    new NextIterator[String] {
+    new NextIterator[DataElement[String]] {
       protected override def getNext() = {
         val nextValue = dataInputStream.readLine()
         if (nextValue == null) {
           finished = true
         }
-        nextValue
+        DataElement.of(nextValue)
       }
 
       protected override def close() {

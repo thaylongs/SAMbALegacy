@@ -17,15 +17,16 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
+import br.uff.spark.{DataElement, Task}
 
+import scala.reflect.ClassTag
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{Duration, Time}
 
 private[streaming]
 class MapPartitionedDStream[T: ClassTag, U: ClassTag](
     parent: DStream[T],
-    mapPartFunc: Iterator[T] => Iterator[U],
+    mapPartFunc: (Iterator[DataElement[T]], Task) => Iterator[DataElement[U]],
     preservePartitioning: Boolean
   ) extends DStream[U](parent.ssc) {
 
@@ -34,7 +35,7 @@ class MapPartitionedDStream[T: ClassTag, U: ClassTag](
   override def slideDuration: Duration = parent.slideDuration
 
   override def compute(validTime: Time): Option[RDD[U]] = {
-    parent.getOrCompute(validTime).map(_.mapPartitions[U](mapPartFunc, preservePartitioning))
+    parent.getOrCompute(validTime).map(_.mapPartitionsWithTaskInfo[U](mapPartFunc, preservePartitioning))
   }
 }
 

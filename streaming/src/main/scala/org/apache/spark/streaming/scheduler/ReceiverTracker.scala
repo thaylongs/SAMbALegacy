@@ -19,11 +19,12 @@ package org.apache.spark.streaming.scheduler
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
+import br.uff.spark.DataElement
+
 import scala.collection.mutable.HashMap
 import scala.concurrent.ExecutionContext
 import scala.language.existentials
 import scala.util.{Failure, Success}
-
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
@@ -586,8 +587,8 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
         new SerializableConfiguration(ssc.sparkContext.hadoopConfiguration)
 
       // Function to start the receiver on the worker node
-      val startReceiverFunc: Iterator[Receiver[_]] => Unit =
-        (iterator: Iterator[Receiver[_]]) => {
+      val startReceiverFunc: Iterator[DataElement[Receiver[_]]] => Unit =
+        (iterator: Iterator[DataElement[Receiver[_]]]) => {
           if (!iterator.hasNext) {
             throw new SparkException(
               "Could not start receiver as object not found.")
@@ -596,7 +597,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
             val receiver = iterator.next()
             assert(iterator.hasNext == false)
             val supervisor = new ReceiverSupervisorImpl(
-              receiver, SparkEnv.get, serializableHadoopConf.value, checkpointDirOption)
+              receiver.value, SparkEnv.get, serializableHadoopConf.value, checkpointDirOption)
             supervisor.start()
             supervisor.awaitTermination()
           } else {

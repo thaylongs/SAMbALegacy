@@ -21,13 +21,13 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.Semaphore
 
+import br.uff.spark.DataElement
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
 import org.scalatest.concurrent.{Signaler, ThreadSignaler, TimeLimits}
 import org.scalatest.concurrent.Eventually._
 import org.scalatest.time.SpanSugar._
-
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.storage.StreamBlockId
@@ -82,14 +82,14 @@ class ReceiverSuite extends TestSuiteBase with TimeLimits with Serializable {
 
     // Verify whether the data stored by the receiver was sent to the executor
     val byteBuffer = ByteBuffer.allocate(100)
-    val arrayBuffer = new ArrayBuffer[Int]()
+    val arrayBuffer = new ArrayBuffer[DataElement[Int]]()
     val iterator = arrayBuffer.iterator
-    receiver.store(1)
+    receiver.store(DataElement.of(1))
     receiver.store(byteBuffer)
     receiver.store(arrayBuffer)
     receiver.store(iterator)
     assert(executor.singles.size === 1)
-    assert(executor.singles.head === 1)
+    assert(executor.singles.head.asInstanceOf[DataElement[Int]].value === 1)
     assert(executor.byteBuffers.size === 1)
     assert(executor.byteBuffers.head.eq(byteBuffer))
     assert(executor.iterators.size === 1)
@@ -371,7 +371,7 @@ class FakeReceiver(sendData: Boolean = false) extends Receiver[Int](StorageLevel
         var count = 0
         while(!isStopped()) {
           if (sendData) {
-            store(count)
+            store(DataElement.of(count))
             count += 1
           }
           Thread.sleep(10)

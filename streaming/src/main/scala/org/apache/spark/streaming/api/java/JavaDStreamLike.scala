@@ -20,10 +20,11 @@ package org.apache.spark.streaming.api.java
 import java.{lang => jl}
 import java.util.{List => JList}
 
+import br.uff.spark.{DataElement, Task}
+
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
-
 import org.apache.spark.api.java.{JavaPairRDD, JavaRDD, JavaRDDLike}
 import org.apache.spark.api.java.JavaPairRDD._
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
@@ -187,9 +188,9 @@ trait JavaDStreamLike[T, This <: JavaDStreamLike[T, This, R], R <: JavaRDDLike[T
    * of this DStream. Applying mapPartitions() to an RDD applies a function to each partition
    * of the RDD.
    */
-  def mapPartitions[U](f: FlatMapFunction[java.util.Iterator[T], U]): JavaDStream[U] = {
-    def fn: (Iterator[T]) => Iterator[U] = {
-      (x: Iterator[T]) => f.call(x.asJava).asScala
+  def mapPartitions[U](f: FlatMapFunction2[java.util.Iterator[DataElement[T]], Task, DataElement[U]]): JavaDStream[U] = {
+    def fn: (Iterator[DataElement[T]], Task) => Iterator[DataElement[U]] = {
+      (x: Iterator[DataElement[T]], task: Task) => f.call(x.asJava, task).asScala
     }
     new JavaDStream(dstream.mapPartitions(fn)(fakeClassTag[U]))(fakeClassTag[U])
   }
@@ -199,10 +200,10 @@ trait JavaDStreamLike[T, This <: JavaDStreamLike[T, This, R], R <: JavaRDDLike[T
    * of this DStream. Applying mapPartitions() to an RDD applies a function to each partition
    * of the RDD.
    */
-  def mapPartitionsToPair[K2, V2](f: PairFlatMapFunction[java.util.Iterator[T], K2, V2])
+  def mapPartitionsToPair[K2, V2](f: PairFlatMapFunctionWithDataElementAndTask[java.util.Iterator[DataElement[T]], K2, V2])
   : JavaPairDStream[K2, V2] = {
-    def fn: (Iterator[T]) => Iterator[(K2, V2)] = {
-      (x: Iterator[T]) => f.call(x.asJava).asScala
+    def fn: (Iterator[DataElement[T]],Task) => Iterator[DataElement[(K2, V2)]] = {
+      (x: Iterator[DataElement[T]], task: Task) => f.call(x.asJava, task).asScala
     }
     new JavaPairDStream(dstream.mapPartitions(fn))(fakeClassTag[K2], fakeClassTag[V2])
   }

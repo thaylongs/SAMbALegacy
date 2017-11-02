@@ -18,11 +18,11 @@ package org.apache.spark.streaming.rdd
 
 import java.io.File
 
-import scala.util.Random
+import br.uff.spark.DataElement
 
+import scala.util.Random
 import org.apache.hadoop.conf.Configuration
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
-
 import org.apache.spark.{SparkConf, SparkContext, SparkException, SparkFunSuite}
 import org.apache.spark.internal.config._
 import org.apache.spark.serializer.SerializerManager
@@ -169,7 +169,7 @@ class WriteAheadLogBackedBlockRDDSuite
       "Can't put more partitions in BlockManager than that in RDD")
     require(numPartitionsInWAL <= numPartitions,
       "Can't put more partitions in write ahead log than that in RDD")
-    val data = Seq.fill(numPartitions, 10)(scala.util.Random.nextString(50))
+    val data = Seq.fill(numPartitions, 10)(DataElement.of(scala.util.Random.nextString(50)))
 
     // Put the necessary blocks in the block manager
     val blockIds = Array.fill(numPartitions)(StreamBlockId(Random.nextInt(), Random.nextInt()))
@@ -207,7 +207,7 @@ class WriteAheadLogBackedBlockRDDSuite
     // Create the RDD and verify whether the returned data is correct
     val rdd = new WriteAheadLogBackedBlockRDD[String](sparkContext, blockIds.toArray,
       recordHandles.toArray, storeInBlockManager = false)
-    assert(rdd.collect() === data.flatten)
+    assert(rdd.collect() === data.flatten.map(a=>a.value))
 
     // Verify that the block fetching is skipped when isBlockValid is set to false.
     // This is done by using an RDD whose data is only in memory but is set to skip block fetching
@@ -229,13 +229,13 @@ class WriteAheadLogBackedBlockRDDSuite
       require(numPartitions === numPartitionsInWAL, "All partitions must be in WAL for this test")
       require(numPartitionsInBM > 0, "Some partitions must be in BlockManager for this test")
       rdd.removeBlocks()
-      assert(rdd.collect() === data.flatten)
+      assert(rdd.collect() === data.flatten.map(a=>a.value))
     }
 
     if (testStoreInBM) {
       val rdd2 = new WriteAheadLogBackedBlockRDD[String](sparkContext, blockIds.toArray,
         recordHandles.toArray, storeInBlockManager = true, storageLevel = StorageLevel.MEMORY_ONLY)
-      assert(rdd2.collect() === data.flatten)
+      assert(rdd2.collect() === data.flatten.map(a=>a.value))
       assert(
         blockIds.forall(blockManager.get(_).nonEmpty),
         "All blocks not found in block manager"
@@ -244,7 +244,7 @@ class WriteAheadLogBackedBlockRDDSuite
   }
 
   private def generateWALRecordHandles(
-      blockData: Seq[Seq[String]],
+      blockData: Seq[Seq[DataElement[String]]],
       blockIds: Seq[BlockId]
     ): Seq[FileBasedWriteAheadLogSegment] = {
     require(blockData.size === blockIds.size)

@@ -20,9 +20,10 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.UUID
 
+import br.uff.spark.DataElement
+
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-
 import org.apache.spark._
 import org.apache.spark.rdd.BlockRDD
 import org.apache.spark.storage.{BlockId, StorageLevel}
@@ -111,7 +112,7 @@ class WriteAheadLogBackedBlockRDD[T: ClassTag](
    * If the block does not exist, then the data is read from the corresponding record
    * in write ahead log files.
    */
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[DataElement[T]] = {
     assertValid()
     val hadoopConf = broadcastedHadoopConf.value
     val blockManager = SparkEnv.get.blockManager
@@ -119,11 +120,11 @@ class WriteAheadLogBackedBlockRDD[T: ClassTag](
     val partition = split.asInstanceOf[WriteAheadLogBackedBlockRDDPartition]
     val blockId = partition.blockId
 
-    def getBlockFromBlockManager(): Option[Iterator[T]] = {
-      blockManager.get[T](blockId).map(_.data.asInstanceOf[Iterator[T]])
+    def getBlockFromBlockManager(): Option[Iterator[DataElement[T]]] = {
+      blockManager.get[T](blockId).map(_.data.asInstanceOf[Iterator[DataElement[T]]])
     }
 
-    def getBlockFromWriteAheadLog(): Iterator[T] = {
+    def getBlockFromWriteAheadLog(): Iterator[DataElement[T]] = {
       var dataRead: ByteBuffer = null
       var writeAheadLog: WriteAheadLog = null
       try {
@@ -158,7 +159,7 @@ class WriteAheadLogBackedBlockRDD[T: ClassTag](
       logInfo(s"Read partition data of $this from write ahead log, record handle " +
         partition.walRecordHandle)
       if (storeInBlockManager) {
-        blockManager.putBytes(blockId, new ChunkedByteBuffer(dataRead.duplicate()), storageLevel)
+        blockManager.putBytes[DataElement[T]](blockId, new ChunkedByteBuffer(dataRead.duplicate()), storageLevel)
         logDebug(s"Stored partition data of $this into block manager with level $storageLevel")
         dataRead.rewind()
       }
@@ -166,7 +167,7 @@ class WriteAheadLogBackedBlockRDD[T: ClassTag](
         .dataDeserializeStream(
           blockId,
           new ChunkedByteBuffer(dataRead).toInputStream())(elementClassTag)
-        .asInstanceOf[Iterator[T]]
+        .asInstanceOf[Iterator[DataElement[T]]]
     }
 
     if (partition.isBlockIdValid) {

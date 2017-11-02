@@ -19,9 +19,10 @@ package org.apache.spark.streaming.receiver
 
 import java.nio.ByteBuffer
 
+import br.uff.spark.DataElement
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.storage.StorageLevel
 
@@ -115,12 +116,12 @@ abstract class Receiver[T](val storageLevel: StorageLevel) extends Serializable 
    * These single items will be aggregated together into data blocks before
    * being pushed into Spark's memory.
    */
-  def store(dataItem: T) {
+  def store(dataItem: DataElement[T]) {
     supervisor.pushSingle(dataItem)
   }
 
   /** Store an ArrayBuffer of received data as a data block into Spark's memory. */
-  def store(dataBuffer: ArrayBuffer[T]) {
+  def store(dataBuffer: ArrayBuffer[DataElement[T]]) {
     supervisor.pushArrayBuffer(dataBuffer, None, None)
   }
 
@@ -129,12 +130,12 @@ abstract class Receiver[T](val storageLevel: StorageLevel) extends Serializable 
    * The metadata will be associated with this block of data
    * for being used in the corresponding InputDStream.
    */
-  def store(dataBuffer: ArrayBuffer[T], metadata: Any) {
+  def store(dataBuffer: ArrayBuffer[DataElement[T]], metadata: Any) {
     supervisor.pushArrayBuffer(dataBuffer, Some(metadata), None)
   }
 
   /** Store an iterator of received data as a data block into Spark's memory. */
-  def store(dataIterator: Iterator[T]) {
+  def store(dataIterator: Iterator[DataElement[T]]) {
     supervisor.pushIterator(dataIterator, None, None)
   }
 
@@ -143,12 +144,12 @@ abstract class Receiver[T](val storageLevel: StorageLevel) extends Serializable 
    * The metadata will be associated with this block of data
    * for being used in the corresponding InputDStream.
    */
-  def store(dataIterator: java.util.Iterator[T], metadata: Any) {
+  def store(dataIterator: java.util.Iterator[DataElement[T]], metadata: Any) {
     supervisor.pushIterator(dataIterator.asScala, Some(metadata), None)
   }
 
   /** Store an iterator of received data as a data block into Spark's memory. */
-  def store(dataIterator: java.util.Iterator[T]) {
+  def store(dataIterator: java.util.Iterator[DataElement[T]]) {
     supervisor.pushIterator(dataIterator.asScala, None, None)
   }
 
@@ -157,7 +158,7 @@ abstract class Receiver[T](val storageLevel: StorageLevel) extends Serializable 
    * The metadata will be associated with this block of data
    * for being used in the corresponding InputDStream.
    */
-  def store(dataIterator: Iterator[T], metadata: Any) {
+  def store(dataIterator: Iterator[DataElement[T]], metadata: Any) {
     supervisor.pushIterator(dataIterator, Some(metadata), None)
   }
 
