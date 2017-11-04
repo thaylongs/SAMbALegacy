@@ -18,22 +18,22 @@
 package org.apache.spark.streaming.kafka010
 
 import java.io.File
-import java.lang.{ Long => JLong }
-import java.util.{ Arrays, HashMap => JHashMap, Map => JMap }
+import java.lang.{Long => JLong}
+import java.util.{Arrays, HashMap => JHashMap, Map => JMap}
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
+
+import br.uff.spark.DataElement
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.Random
-
 import org.apache.kafka.clients.consumer._
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll}
 import org.scalatest.concurrent.Eventually
-
 import org.apache.spark.{SparkConf, SparkContext, SparkFunSuite}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
@@ -124,14 +124,14 @@ class DirectKafkaStreamSuite
       for (o <- offsetRanges) {
         logInfo(s"${o.topic} ${o.partition} ${o.fromOffset} ${o.untilOffset}")
       }
-      val collected = rdd.mapPartitionsWithIndex { (i, iter) =>
+      val collected = rdd.mapPartitionsWithIndexWithTask { (i, iter, task) =>
       // For each partition, get size of the range in the partition,
       // and the number of items in the partition
         val off = offsetRanges(i)
         val all = iter.toSeq
         val partSize = all.size
         val rangeSize = off.untilOffset - off.fromOffset
-        Iterator((partSize, rangeSize))
+        Iterator(DataElement.of((partSize, rangeSize), task, task.isIgnored, all: _*))
       }.collect
 
       // Verify whether number of elements in each partition
@@ -190,14 +190,14 @@ class DirectKafkaStreamSuite
       for (o <- offsetRanges) {
         logInfo(s"${o.topic} ${o.partition} ${o.fromOffset} ${o.untilOffset}")
       }
-      val collected = rdd.mapPartitionsWithIndex { (i, iter) =>
+      val collected = rdd.mapPartitionsWithIndexWithTask { (i, iter, task) =>
       // For each partition, get size of the range in the partition,
       // and the number of items in the partition
         val off = offsetRanges(i)
         val all = iter.toSeq
         val partSize = all.size
         val rangeSize = off.untilOffset - off.fromOffset
-        Iterator((partSize, rangeSize))
+        Iterator(DataElement.of((partSize, rangeSize), task, task.isIgnored, all: _*))
       }.collect
 
       // Verify whether number of elements in each partition

@@ -17,13 +17,13 @@
 
 package org.apache.spark.streaming.kafka010
 
-import java.{ util => ju }
+import java.{util => ju}
+
+import br.uff.spark.DataElement
 
 import scala.collection.mutable.ArrayBuffer
-
-import org.apache.kafka.clients.consumer.{ ConsumerConfig, ConsumerRecord }
+import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord}
 import org.apache.kafka.common.TopicPartition
-
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.partial.{BoundedDouble, PartialResult}
@@ -119,14 +119,14 @@ private[spark] class KafkaRDD[K, V](
       }
     }
 
-    val buf = new ArrayBuffer[ConsumerRecord[K, V]]
+    val buf = new ArrayBuffer[DataElement[ConsumerRecord[K, V]]]
     val res = context.runJob(
       this,
-      (tc: TaskContext, it: Iterator[ConsumerRecord[K, V]]) =>
+      (tc: TaskContext, it: Iterator[DataElement[ConsumerRecord[K, V]]]) =>
       it.take(parts(tc.partitionId)).toArray, parts.keys.toArray
     )
     res.foreach(buf ++= _)
-    buf.toArray
+    buf.map(a => a.value).toArray
   }
 
   private def executors(): Array[ExecutorCacheTaskLocation] = {
@@ -170,7 +170,7 @@ private[spark] class KafkaRDD[K, V](
       s"for topic ${part.topic} partition ${part.partition}. " +
       "You either provided an invalid fromOffset, or the Kafka topic has been damaged"
 
-  override def compute(thePart: Partition, context: TaskContext): Iterator[ConsumerRecord[K, V]] = {
+  override def compute(thePart: Partition, context: TaskContext): Iterator[DataElement[ConsumerRecord[K, V]]] = {
     val part = thePart.asInstanceOf[KafkaRDDPartition]
     assert(part.fromOffset <= part.untilOffset, errBeginAfterEnd(part))
     if (part.fromOffset == part.untilOffset) {
@@ -188,7 +188,7 @@ private[spark] class KafkaRDD[K, V](
    */
   private class KafkaRDDIterator(
       part: KafkaRDDPartition,
-      context: TaskContext) extends Iterator[ConsumerRecord[K, V]] {
+      context: TaskContext) extends Iterator[DataElement[ConsumerRecord[K, V]]] {
 
     logInfo(s"Computing topic ${part.topic}, partition ${part.partition} " +
       s"offsets ${part.fromOffset} -> ${part.untilOffset}")
@@ -218,11 +218,11 @@ private[spark] class KafkaRDD[K, V](
 
     override def hasNext(): Boolean = requestOffset < part.untilOffset
 
-    override def next(): ConsumerRecord[K, V] = {
+    override def next(): DataElement[ConsumerRecord[K, V]] = {
       assert(hasNext(), "Can't call getNext() once untilOffset has been reached")
       val r = consumer.get(requestOffset, pollTimeout)
       requestOffset += 1
-      r
+      DataElement.of(r, task, task.isIgnored)
     }
   }
 }
