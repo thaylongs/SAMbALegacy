@@ -517,7 +517,9 @@ private[deploy] class Worker(
             executorDir,
             workerUri,
             conf,
-            appLocalDirs, ExecutorState.RUNNING)
+            appLocalDirs, ExecutorState.RUNNING,
+            appDesc.dfAnalyzerExecutionID
+          )
           executors(appId + "/" + execId) = manager
           manager.start()
           coresUsed += cores_

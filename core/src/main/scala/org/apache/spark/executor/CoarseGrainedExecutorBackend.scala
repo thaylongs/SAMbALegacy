@@ -19,8 +19,10 @@ package org.apache.spark.executor
 
 import java.net.URL
 import java.nio.ByteBuffer
-import java.util.Locale
+import java.util.{Locale, UUID}
 import java.util.concurrent.atomic.AtomicBoolean
+
+import br.uff.spark.DataflowProvenance
 
 import scala.collection.mutable
 import scala.util.{Failure, Success}
@@ -120,6 +122,7 @@ private[spark] class CoarseGrainedExecutorBackend(
           // However, if `executor.stop()` runs in some thread of RpcEnv, RpcEnv won't be able to
           // stop until `executor.stop()` returns, which becomes a dead-lock (See SPARK-14180).
           // Therefore, we put this line in a new thread.
+          DataflowProvenance.getInstance.finish()
           executor.stop()
         }
       }.start()
@@ -181,7 +184,11 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       cores: Int,
       appId: String,
       workerUrl: Option[String],
-      userClassPath: Seq[URL]) {
+      userClassPath: Seq[URL],
+      dfAnalyzerExecutionID:UUID) {
+
+    /* Starting connection with database */
+    DataflowProvenance.getInstance.init(dfAnalyzerExecutionID)
 
     Utils.initDaemon(log)
 
@@ -245,6 +252,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
     var appId: String = null
     var workerUrl: Option[String] = None
     val userClassPath = new mutable.ListBuffer[URL]()
+    var dfAnalyzerExecutionID: UUID = null
 
     var argv = args.toList
     while (!argv.isEmpty) {
@@ -264,6 +272,9 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
         case ("--app-id") :: value :: tail =>
           appId = value
           argv = tail
+        case ("--execution-id") :: value :: tail =>
+          dfAnalyzerExecutionID = UUID.fromString(value)
+          argv = tail
         case ("--worker-url") :: value :: tail =>
           // Worker url is used in spark standalone mode to enforce fate-sharing with worker
           workerUrl = Some(value)
@@ -281,11 +292,11 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
     }
 
     if (driverUrl == null || executorId == null || hostname == null || cores <= 0 ||
-      appId == null) {
+      appId == null || dfAnalyzerExecutionID == null) {
       printUsageAndExit()
     }
 
-    run(driverUrl, executorId, hostname, cores, appId, workerUrl, userClassPath)
+    run(driverUrl, executorId, hostname, cores, appId, workerUrl, userClassPath, dfAnalyzerExecutionID)
     System.exit(0)
   }
 
@@ -302,6 +313,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       |   --cores <cores>
       |   --app-id <appid>
       |   --worker-url <workerUrl>
+      |   --execution-id <dfAnalyzerExecutionID>
       |   --user-class-path <url>
       |""".stripMargin)
     // scalastyle:on println

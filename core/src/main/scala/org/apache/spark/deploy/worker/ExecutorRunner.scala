@@ -19,6 +19,7 @@ package org.apache.spark.deploy.worker
 
 import java.io._
 import java.nio.charset.StandardCharsets
+import java.util.UUID
 
 import scala.collection.JavaConverters._
 
@@ -52,7 +53,8 @@ private[deploy] class ExecutorRunner(
     val workerUrl: String,
     conf: SparkConf,
     val appLocalDirs: Seq[String],
-    @volatile var state: ExecutorState.Value)
+    @volatile var state: ExecutorState.Value,
+    val dfAnalyzerExecutionID: UUID)
   extends Logging {
 
   private val fullId = appId + "/" + execId
@@ -133,6 +135,7 @@ private[deploy] class ExecutorRunner(
     case "{{HOSTNAME}}" => host
     case "{{CORES}}" => cores.toString
     case "{{APP_ID}}" => appId
+    case "{{EXECUTION_ID}}" => dfAnalyzerExecutionID.toString
     case other => other
   }
 

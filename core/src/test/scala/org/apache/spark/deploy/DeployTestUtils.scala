@@ -18,7 +18,7 @@
 package org.apache.spark.deploy
 
 import java.io.File
-import java.util.Date
+import java.util.{Date, UUID}
 
 import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.deploy.master.{ApplicationInfo, DriverInfo, WorkerInfo}
@@ -27,7 +27,7 @@ import org.apache.spark.deploy.worker.{DriverRunner, ExecutorRunner}
 private[deploy] object DeployTestUtils {
   def createAppDesc(): ApplicationDescription = {
     val cmd = new Command("mainClass", List("arg1", "arg2"), Map(), Seq(), Seq(), Seq())
-    new ApplicationDescription("name", Some(4), 1234, cmd, "appUiUrl")
+    new ApplicationDescription(UUID.randomUUID(), "name", Some(4), 1234, cmd, "appUiUrl")
   }
 
   def createAppInfo() : ApplicationInfo = {
@@ -72,7 +72,8 @@ private[deploy] object DeployTestUtils {
       "spark://worker",
       new SparkConf,
       Seq("localDir"),
-      ExecutorState.RUNNING)
+      ExecutorState.RUNNING,
+      UUID.randomUUID())
   }
 
   def createDriverRunner(driverId: String): DriverRunner = {

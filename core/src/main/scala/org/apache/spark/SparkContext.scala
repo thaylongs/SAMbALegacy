@@ -24,7 +24,7 @@ import java.util.{Arrays, Locale, Properties, ServiceLoader, UUID}
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 
-import br.uff.spark.{DataElement, DataflowUtils, TransformationType}
+import br.uff.spark.{DataElement, DataflowProvenance, DataflowUtils, TransformationType}
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
@@ -359,6 +359,7 @@ class SparkContext(config: SparkConf) extends Logging {
     Utils.setLogLevel(org.apache.log4j.Level.toLevel(upperCased))
   }
 
+  var dfAnalyzerExecutionID: UUID = null
   try {
     _conf = config.clone()
     _conf.validateSettings()
@@ -372,6 +373,9 @@ class SparkContext(config: SparkConf) extends Logging {
 
     // log out spark.app.name in the Spark driver logs
     logInfo(s"Submitted application: $appName")
+
+    /* Starting connection with database */
+    dfAnalyzerExecutionID = DataflowProvenance.getInstance.init(this)
 
     // System property spark.yarn.app.id must be set if user code ran by AM on a YARN cluster
     if (master == "yarn" && deployMode == "cluster" && !_conf.contains("spark.yarn.app.id")) {
@@ -1946,6 +1950,7 @@ class SparkContext(config: SparkConf) extends Logging {
     // Unset YARN mode system env variable, to allow switching between cluster types.
     System.clearProperty("SPARK_YARN_MODE")
     SparkContext.clearActiveContext()
+    DataflowProvenance.getInstance.finish()
     logInfo("Successfully stopped SparkContext")
   }
 

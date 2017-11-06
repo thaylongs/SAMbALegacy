@@ -77,7 +77,8 @@ private[spark] class StandaloneSchedulerBackend(
       "--hostname", "{{HOSTNAME}}",
       "--cores", "{{CORES}}",
       "--app-id", "{{APP_ID}}",
-      "--worker-url", "{{WORKER_URL}}")
+      "--worker-url", "{{WORKER_URL}}",
+      "--execution-id", "{{EXECUTION_ID}}")
     val extraJavaOpts = sc.conf.getOption("spark.executor.extraJavaOptions")
       .map(Utils.splitCommandString).getOrElse(Seq.empty)
     val classPathEntries = sc.conf.getOption("spark.executor.extraClassPath")
@@ -110,7 +111,7 @@ private[spark] class StandaloneSchedulerBackend(
       } else {
         None
       }
-    val appDesc = ApplicationDescription(sc.appName, maxCores, sc.executorMemory, command,
+    val appDesc = ApplicationDescription(sc.dfAnalyzerExecutionID, sc.appName, maxCores, sc.executorMemory, command,
       webUrl, sc.eventLogDir, sc.eventLogCodec, coresPerExecutor, initialExecutorLimit)
     client = new StandaloneAppClient(sc.env.rpcEnv, masters, appDesc, this, conf)
     client.start()

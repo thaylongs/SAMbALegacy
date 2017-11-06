@@ -17,7 +17,7 @@
 
 package org.apache.spark.deploy.master
 
-import java.util.Date
+import java.util.{Date, UUID}
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -121,6 +121,7 @@ class MasterSuite extends SparkFunSuite
       startTime = 0,
       id = "test_app",
       desc = new ApplicationDescription(
+        UUID.randomUUID(),
         name = "",
         maxCores = None,
         memoryPerExecutorMB = 0,
@@ -538,7 +539,7 @@ class MasterSuite extends SparkFunSuite
       coresPerExecutor: Option[Int] = None,
       maxCores: Option[Int] = None): ApplicationInfo = {
     val desc = new ApplicationDescription(
-      "test", maxCores, memoryPerExecutorMb, null, "", None, None, coresPerExecutor)
+      UUID.randomUUID(), "test", maxCores, memoryPerExecutorMb, null, "", None, None, coresPerExecutor)
     val appId = System.currentTimeMillis.toString
     val endpointRef = mock(classOf[RpcEndpointRef])
     val mockAddress = mock(classOf[RpcAddress])

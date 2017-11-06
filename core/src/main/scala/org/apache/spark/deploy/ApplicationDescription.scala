@@ -18,8 +18,10 @@
 package org.apache.spark.deploy
 
 import java.net.URI
+import java.util.UUID
 
 private[spark] case class ApplicationDescription(
+    dfAnalyzerExecutionID: UUID,
     name: String,
     maxCores: Option[Int],
     memoryPerExecutorMB: Int,

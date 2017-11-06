@@ -22,12 +22,26 @@ class DataflowProvenance private() {
   var dao: DataBaseBasicMethods = null
   var execution: Execution = null
   private val rdds = new mutable.HashMap[String, DataElement[_ <: Any]]()
+  var dummyNode = true
 
-  def init(sparkContext: SparkContext): Unit = {
+  def init(sparkContext: SparkContext): UUID = {
     execution = new Execution(sparkContext.appName)
-    dao = new CassandraDBDao(execution)
-    dao.init()
+    if (System.getenv("DISABLE_PROVENANCE") == null) {
+      dao = new CassandraDBDao(execution)
+      dao.init()
+      dummyNode = false
+    }
+    execution.ID
   }
+
+  def init(dfAnalyzerExecutionID: UUID) = {
+    execution = new Execution(null)
+    execution.ID = dfAnalyzerExecutionID
+    if (System.getenv("DISABLE_PROVENANCE") == null) {
+      dao = new CassandraDBDao(execution)
+    }
+  }
+
 
   initTest()
 
@@ -69,9 +83,13 @@ class DataflowProvenance private() {
   }
 
   def finish(): Unit = {
-    execution.endTime = LocalDateTime.now()
-    dao.updateExecution(execution)
-    dao.close()
+    if (!dummyNode) {
+      execution.endTime = LocalDateTime.now()
+      dao.updateExecution(execution)
+    }
+    if (System.getenv("DISABLE_PROVENANCE") == null) {
+      dao.close()
+    }
   }
 
 
