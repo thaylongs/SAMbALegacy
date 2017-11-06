@@ -332,7 +332,7 @@ class CheckpointSuite extends SparkFunSuite with RDDCheckpointTester with LocalS
       reliableCheckpoint)
 //    testRDD(_.pipe(Seq("cat")), reliableCheckpoint) // only works in linux
   }
-7
+
   runTest("ParallelCollectionRDD") { reliableCheckpoint: Boolean =>
     val parCollection = sc.makeRDD(1 to 4, 2)
     val numPartitions = parCollection.partitions.size

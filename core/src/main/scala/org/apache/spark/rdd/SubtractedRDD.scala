@@ -55,11 +55,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
   extends RDD[(K, V)](rdd1.context, Nil) {
 
   // loading dependencies
-  task.addDepencencie(rdd1)
-  task.addDepencencie(rdd2)
-  rdd1.task.checkAndPersist()
-  rdd2.task.checkAndPersist()
-
+  loadDependenciesOfTask(rdd1, rdd2)
 
   override def getDependencies: Seq[Dependency[_]] = {
     def rddDependency[T1: ClassTag, T2: ClassTag](rdd: RDD[_ <: Product2[T1, T2]])

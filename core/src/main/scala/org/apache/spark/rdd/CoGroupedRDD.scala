@@ -85,10 +85,7 @@ class CoGroupedRDD[K: ClassTag](
   setTransformationType(TransformationType.CO_GROUPED)
 
   // loading dependencies
-  for (elem <- rdds) {
-    task.addDepencencie(elem)
-    elem.task.checkAndPersist()
-  }
+  loadDependenciesOfTask(rdds:_*)
 
   // For example, `(k, a) cogroup (k, b)` produces k -> Array(ArrayBuffer as, ArrayBuffer bs).
   // Each ArrayBuffer is represented as a CoGroup, and the resulting Array as a CoGroupCombiner.

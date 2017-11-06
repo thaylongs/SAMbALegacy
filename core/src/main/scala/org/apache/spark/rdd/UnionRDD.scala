@@ -71,10 +71,7 @@ class UnionRDD[T: ClassTag](
   extends RDD[T](sc, Nil) {  // Nil since we implement getDependencies
 
   // loading dependencies
-  for (elem <- rdds) {
-    task.addDepencencie(elem.task)
-    elem.task.checkAndPersist()
-  }
+  loadDependenciesOfTask(rdds: _*)
   setTransformationType(TransformationType.UNION)
 
   // visible for testing

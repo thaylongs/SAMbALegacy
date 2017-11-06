@@ -21,7 +21,7 @@ import java.{lang => jl}
 import java.lang.{Iterable => JIterable}
 import java.util.{Comparator, Iterator => JIterator, List => JList, Map => JMap}
 
-import br.uff.spark.{DataElement, DataflowUtils, Task, TransformationType}
+import br.uff.spark._
 
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag

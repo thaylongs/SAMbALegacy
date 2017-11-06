@@ -21,7 +21,7 @@ import java.{lang => jl}
 import java.lang.{Iterable => JIterable}
 import java.util.{Comparator, List => JList}
 
-import br.uff.spark.{DataElement, TransformationType}
+import br.uff.spark.{DataElement, TransformationGroup, TransformationType}
 
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
@@ -996,6 +996,27 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
   /** Assign a name to this RDD */
   def setName(name: String): JavaPairRDD[K, V] = {
     rdd.setName(name)
+    this
+  }
+
+  /**
+    * Mark this RDD as the start of a Transformation Group.
+    * @param transformationGroup
+    * @return RDD[T]
+    */
+  def initTransformationGroup(transformationGroup: TransformationGroup): JavaPairRDD[K, V] = {
+    rdd.initTransformationGroup(transformationGroup)
+    this
+  }
+
+  /**
+    * Finish a Transformation Group that already started in previous Task.
+    *
+    * @param transformationGroup
+    * @return RDD[T]
+    */
+  def finishTransformationGroup(transformationGroup: TransformationGroup): JavaPairRDD[K, V] = {
+    rdd.finishTransformationGroup(transformationGroup)
     this
   }
 }

@@ -16,11 +16,12 @@ class Task(@transient val rdd: RDD[_ <: Any]) extends Serializable {
   var alreadyPersisted = false
   var description: String = ""
 
+  var transformation: TransformationGroup = null
   val dependenciesIDS = new mutable.MutableList[UUID]()
 
-  def addDepencencie(rdd: RDD[_ <: Any]): Task = addDepencencie(rdd.task)
+  def addDependency(rdd: RDD[_ <: Any]): Task = addDependency(rdd.task)
 
-  def addDepencencie(task: Task): Task = {
+  def addDependency(task: Task): Task = {
     if (task.isIgnored) {
       for (elem <- task.dependenciesIDS) {
         dependenciesIDS += elem
@@ -38,12 +39,5 @@ class Task(@transient val rdd: RDD[_ <: Any]) extends Serializable {
     alreadyPersisted = true
   }
 
-  //  def addDepencencie(taskID: String): Task = synchronized {
-  //    if (taskID == null)
-  //      throw new Exception("Errror ----- d")
-  //    this.dependenciesIDS += taskID
-  //    return this
-  //  }
-
-  override def toString = s"Task($id, $transformationType, $isIgnored)"
+  override def toString = s"Task($id, $transformationType, $description ,$isIgnored)"
 }

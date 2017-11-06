@@ -45,8 +45,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
   extends RDD[(K, C)](prev.context, Nil) {
 
   // loading dependencies
-  task.addDepencencie(prev)
-  prev.task.checkAndPersist()
+  loadDependenciesOfTask(prev)
   setTransformationType(TransformationType.SHUFFLED)
 
   private var userSpecifiedSerializer: Option[Serializer] = None

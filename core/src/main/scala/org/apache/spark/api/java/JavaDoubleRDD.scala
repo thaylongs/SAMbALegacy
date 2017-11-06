@@ -19,7 +19,7 @@ package org.apache.spark.api.java
 
 import java.lang.{Double => JDouble}
 
-import br.uff.spark.DataElement
+import br.uff.spark.{DataElement, TransformationGroup}
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
@@ -279,6 +279,27 @@ class JavaDoubleRDD(val srdd: RDD[scala.Double])
   /** Assign a name to this RDD */
   def setName(name: String): JavaDoubleRDD = {
     srdd.setName(name)
+    this
+  }
+
+  /**
+    * Mark this RDD as the start of a Transformation Group.
+    * @param transformationGroup
+    * @return RDD[T]
+    */
+  def initTransformationGroup(transformationGroup: TransformationGroup): JavaDoubleRDD ={
+    srdd.initTransformationGroup(transformationGroup)
+    this
+  }
+
+  /**
+    * Finish a Transformation Group that already started in previous Task.
+    *
+    * @param transformationGroup
+    * @return RDD[T]
+    */
+  def finishTransformationGroup(transformationGroup: TransformationGroup): JavaDoubleRDD = {
+    srdd.finishTransformationGroup(transformationGroup)
     this
   }
 }

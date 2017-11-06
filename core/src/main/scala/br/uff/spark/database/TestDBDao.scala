@@ -17,7 +17,7 @@ class TestDBDao(val execution: Execution) extends DataBaseBasicMethods {
 
   override def insertDependencies(dataElement: DataElement[_]): Unit = super.insertDependencies(dataElement)
 
-  override def insertDependencieOfDataElement(dataElement: DataElement[_], id: UUID): Unit = super.insertDependencieOfDataElement(dataElement, id)
+  override def insertDependencyOfDataElement(dataElement: DataElement[_], id: UUID): Unit = super.insertDependencyOfDataElement(dataElement, id)
 
   override def updateDataElement(dataElement: DataElement[_]): Unit = super.updateDataElement(dataElement)
 

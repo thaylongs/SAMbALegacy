@@ -2,7 +2,8 @@ package br.uff.spark
 
 import java.sql.{Connection, SQLException}
 import java.util.concurrent.atomic.AtomicInteger
-
+import com.datastax.driver.core.CodecRegistry
+import br.uff.spark.database.CassandraCodecs.CodecsTaskToUUID
 import com.datastax.driver.core.{Cluster, PoolingOptions, Session}
 
 object DataSource {
@@ -34,6 +35,7 @@ object DataSource {
       .addContactPoint("127.0.0.1")
       .withPort(9042)
       .withPoolingOptions(poolingOptions)
+      .withCodecRegistry(CodecRegistry.DEFAULT_INSTANCE.register(new CodecsTaskToUUID))
       .build();
     cluster
   }

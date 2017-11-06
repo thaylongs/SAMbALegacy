@@ -43,6 +43,10 @@ class DataflowProvenance private() {
     dao.insertDependencies(dataElement)
   }
 
+  def add(group: TransformationGroup): Unit = {
+    dao.insertTransformationGroup(group)
+  }
+
   def add(task: Task): Unit = {
     println(s"${task.transformationType} - ${task.description} - ${task.id}")
     dao.insertTask(task)
@@ -61,7 +65,7 @@ class DataflowProvenance private() {
   }
 
   def informNewDepencencie(dataElement: DataElement[_ <: Any], id: UUID): Unit = {
-    dao.insertDependencieOfDataElement(dataElement, id)
+    dao.insertDependencyOfDataElement(dataElement, id)
   }
 
   def finish(): Unit = {

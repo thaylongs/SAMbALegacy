@@ -20,10 +20,10 @@ package org.apache.spark.rdd
 import java.util.{Random, UUID}
 
 import br.uff.spark.TransformationType.TransformationType
-import br.uff.spark.{DataElement, DataflowUtils, Task, TransformationType}
+import br.uff.spark._
 
 import scala.collection.{AbstractIterator, Map, mutable}
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.io.Codec
 import scala.language.implicitConversions
 import scala.reflect.{ClassTag, classTag}
@@ -149,18 +149,36 @@ abstract class RDD[T: ClassTag](
   /** A unique ID for this RDD (within its SparkContext). */
   val id: Int = sc.newRddId()
   var task = new Task(this)
+  @transient var transformationGroupManager = new TransformationGroupManager(task)
 
-  for (elem <- deps) {
-    task.addDepencencie(elem.rdd)
-    elem.rdd.checkAndPersistProvenance()
+  def loadDependenciesOfTask(deps: RDD[_]*): Unit = {
+    val previousTransformations = new java.util.HashSet[TransformationGroup]
+    var foundCount = 0
+    for (rdd <- deps) {
+      task.addDependency(rdd)
+      rdd.checkAndPersistProvenance()
+      val previousTransformation = rdd.transformationGroupManager.currentTransformationGroup
+      if (previousTransformation != null){
+        previousTransformations.add(previousTransformation)
+        foundCount+=1
+      }
+
+    }
+    transformationGroupManager.processDependenciesOfTransformationGroup(previousTransformations, deps.size, foundCount)
   }
 
-  def checkAndPersistProvenance(): RDD[T] ={
+  if (deps != null && !deps.isEmpty)
+    loadDependenciesOfTask(deps.map(a => a.rdd): _*)
+
+  def checkAndPersistProvenance(): RDD[T] = {
     task.checkAndPersist()
+    if (task.isIgnored && transformationGroupManager.currentTransformationGroup != null) {
+      transformationGroupManager.currentTransformationGroup.intermediaryTasksIDS.remove(task)
+    }
     this
   }
 
-  //For Provenance
+  //START: For Provenance
   def setTransformationType(_transformationType: TransformationType): RDD[T] = {
     task.transformationType = _transformationType
     this
@@ -170,6 +188,32 @@ abstract class RDD[T: ClassTag](
     task.isIgnored = true
     this
   }
+  //END: For Provenance
+
+  //START: For TransformationGroup
+  /**
+    * Mark this RDD as the start of a Transformation Group.
+    * @param newTransformationGroup
+    * @return RDD[T]
+    */
+  def initTransformationGroup(newTransformationGroup: TransformationGroup): RDD[T] = {
+    transformationGroupManager.initTransformationGroup(newTransformationGroup)
+    this
+  }
+
+  /**
+    * Finish a Transformation Group that already started in previous Task.
+    *
+    * @param transformationGroup
+    * @return RDD[T]
+    */
+  def finishTransformationGroup(transformationGroup: TransformationGroup): RDD[T] = {
+    transformationGroupManager.finishTransformationGroup(transformationGroup, task)
+    this
+  }
+  //END: For TransformationGroup
+
+
   /** A friendly name for this RDD */
   @transient var name: String = null
 

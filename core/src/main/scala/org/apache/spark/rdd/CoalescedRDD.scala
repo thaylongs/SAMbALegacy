@@ -79,10 +79,9 @@ private[spark] class CoalescedRDD[T: ClassTag](
     partitionCoalescer: Option[PartitionCoalescer] = None)
   extends RDD[T](prev.context, Nil) {  // Nil since we implement getDependencies
 
+  // loading dependencies
+  loadDependenciesOfTask(prev)
   setTransformationType(TransformationType.COALESCED)
-  task.addDepencencie(prev)
-  prev.task.checkAndPersist()
-
 
   require(maxPartitions > 0 || maxPartitions == prev.partitions.length,
     s"Number of partitions ($maxPartitions) must be positive.")

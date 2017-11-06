@@ -55,10 +55,7 @@ class CartesianRDD[T: ClassTag, U: ClassTag](
   with Serializable {
 
   // loading dependencies
-  for (elem <- Seq(rdd1, rdd2)) {
-    task.addDepencencie(elem.task)
-    elem.task.checkAndPersist()
-  }
+  loadDependenciesOfTask(rdd1, rdd2)
   setTransformationType(TransformationType.CARTESIAN)
 
   val numPartitionsInRdd2 = rdd2.partitions.length

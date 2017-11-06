@@ -17,6 +17,8 @@
 
 package org.apache.spark.api.java
 
+import br.uff.spark.TransformationGroup
+
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
 import org.apache.spark._
@@ -191,6 +193,26 @@ class JavaRDD[T](val rdd: RDD[T])(implicit val classTag: ClassTag[T])
   /** Assign a name to this RDD */
   def setName(name: String): JavaRDD[T] = {
     rdd.setName(name)
+    this
+  }
+
+  /**
+    * Mark this RDD as the start of a Transformation Group.
+    * @param transformationGroup
+    * @return RDD[T]
+    */
+  def initTransformationGroup(transformationGroup: TransformationGroup): JavaRDD[T] = {
+    rdd.initTransformationGroup(transformationGroup)
+    this
+  }
+
+  /**
+    * Finish a Transformation Group that already started in previous Task.
+    * @param transformationGroup
+    * @return RDD[T]
+    */
+  def finishTransformationGroup(transformationGroup: TransformationGroup): JavaRDD[T] = {
+    rdd.finishTransformationGroup(transformationGroup)
     this
   }
 

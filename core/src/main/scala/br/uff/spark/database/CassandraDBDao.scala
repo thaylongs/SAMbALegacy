@@ -4,7 +4,7 @@ import java.sql.Timestamp
 import java.time.{ZoneId, ZonedDateTime}
 import java.util.UUID
 
-import br.uff.spark.{DataElement, DataSource, Execution, Task}
+import br.uff.spark._
 
 import scala.collection.JavaConverters._
 
@@ -138,7 +138,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
       |       AND "executionID" = ?
     """.stripMargin)
 
-  override def insertDependencieOfDataElement(dataElement: DataElement[_ <: Any], id: UUID): Unit = {
+  override def insertDependencyOfDataElement(dataElement: DataElement[_ <: Any], id: UUID): Unit = {
     con.executeAsync(
       STMT_UPDATE_DEPENDENCIES_OF_DATA_ELEMENT.bind(
         Set(id).asJava,
@@ -149,6 +149,25 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
     )
   }
 
+  val STMT_INSERT_TRANSFORMATION_GROUP = con.prepare(
+    """
+      |INSERT INTO dfanalyzer."TransformationGroup"
+      |            ("executionID", id, "initTasksIDS", "intermediaryTasksIDS", "finishTaskID")
+      |VALUES
+      |            (?, ?, ?, ?, ?);
+    """.stripMargin)
+
+  override def insertTransformationGroup(group: TransformationGroup): Unit = {
+    con.executeAsync(
+      STMT_INSERT_TRANSFORMATION_GROUP.bind(
+        execution.ID,
+        group.id,
+        group.initTasksIDS,
+        group.intermediaryTasksIDS,
+        group.finishTaskID
+      )
+    )
+  }
 
   val STMT_UPDATE_DATA_ELEMENT = con.prepare(
     """
