@@ -7,9 +7,9 @@ class TransformationGroup(val name: String) extends Serializable {
 
   val id = UUID.randomUUID()
 
-  val initTasksIDS = new util.LinkedList[Task]()
+  val initTasksIDS = new util.HashSet[Task]()
 
-  val intermediaryTasksIDS = new util.LinkedList[Task]()
+  val intermediaryTasksIDS = new util.HashSet[Task]()
 
   var finishTaskID: Task = null
 

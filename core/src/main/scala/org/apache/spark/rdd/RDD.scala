@@ -213,6 +213,14 @@ abstract class RDD[T: ClassTag](
   }
   //END: For TransformationGroup
 
+  /**
+    * Assign a schema to process the data
+    * @param schema
+    */
+  def setSchema(schema: DataElementSchema[T]): Unit = {
+    task.schema = schema
+    task.parseValue = (obj => schema.splitData(obj.asInstanceOf[T]))
+  }
 
   /** A friendly name for this RDD */
   @transient var name: String = null
@@ -461,8 +469,11 @@ abstract class RDD[T: ClassTag](
    */
   def filter(f: T => Boolean): RDD[T] = withScope {
     val cleanF = sc.clean(f)
-    new FilterMapPartitionsRDD[T](
+    val result = new FilterMapPartitionsRDD[T](
       this,cleanF,preservesPartitioning = true)
+    if (task.schema != null)
+      result.setSchema(task.schema.asInstanceOf[DataElementSchema[T]])
+    return result
   }
 
   /**

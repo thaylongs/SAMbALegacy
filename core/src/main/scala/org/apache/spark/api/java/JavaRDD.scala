@@ -17,7 +17,7 @@
 
 package org.apache.spark.api.java
 
-import br.uff.spark.TransformationGroup
+import br.uff.spark.{DataElementSchema, TransformationGroup}
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
@@ -213,6 +213,15 @@ class JavaRDD[T](val rdd: RDD[T])(implicit val classTag: ClassTag[T])
     */
   def finishTransformationGroup(transformationGroup: TransformationGroup): JavaRDD[T] = {
     rdd.finishTransformationGroup(transformationGroup)
+    this
+  }
+
+  /**
+    * Assign a schema to process the data
+    * @param schema
+    */
+  def setSchema(schema: DataElementSchema[T]): JavaRDD[T] = {
+    rdd.setSchema(schema)
     this
   }
 

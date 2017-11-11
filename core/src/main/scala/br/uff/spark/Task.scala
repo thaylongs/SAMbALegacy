@@ -16,7 +16,14 @@ class Task(@transient val rdd: RDD[_ <: Any]) extends Serializable {
   var alreadyPersisted = false
   var description: String = ""
 
+  /* Schema of Data*/
+  var schema: DataElementSchema[_] = null
+  var parseValue: (Any) => Array[String] = null
+
+  /* Transfomation Group of Task*/
   var transformation: TransformationGroup = null
+
+  /* Previous Tasks */
   val dependenciesIDS = new mutable.MutableList[UUID]()
 
   def addDependency(rdd: RDD[_ <: Any]): Task = addDependency(rdd.task)

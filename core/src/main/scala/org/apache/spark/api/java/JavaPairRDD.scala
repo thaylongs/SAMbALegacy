@@ -21,7 +21,7 @@ import java.{lang => jl}
 import java.lang.{Iterable => JIterable}
 import java.util.{Comparator, List => JList}
 
-import br.uff.spark.{DataElement, TransformationGroup, TransformationType}
+import br.uff.spark.{DataElement, DataElementSchema, TransformationGroup, TransformationType}
 
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
@@ -1017,6 +1017,16 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
     */
   def finishTransformationGroup(transformationGroup: TransformationGroup): JavaPairRDD[K, V] = {
     rdd.finishTransformationGroup(transformationGroup)
+    this
+  }
+
+  /**
+    * Assign a schema to process the data
+    *
+    * @param schema
+    */
+  def setSchema(schema: DataElementSchema[(K, V)]): JavaPairRDD[K, V] = {
+    rdd.setSchema(schema)
     this
   }
 }

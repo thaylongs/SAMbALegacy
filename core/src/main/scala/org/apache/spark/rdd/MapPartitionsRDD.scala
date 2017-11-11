@@ -57,7 +57,7 @@ private[spark] class FilterMapPartitionsRDD[T: ClassTag](
   var defaultNotPassValue: DataElement[String] = null
 
   override def checkAndPersistProvenance(): RDD[T] = {
-    defaultNotPassValue = DataElement.of("don't-pass: " + task.description, task, task.isIgnored)
+    defaultNotPassValue = DataElement.ignoringSchemaOf("don't-pass: " + task.description, task, task.isIgnored)
     super.checkAndPersistProvenance()
     this
   }

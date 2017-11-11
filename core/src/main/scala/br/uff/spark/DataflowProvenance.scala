@@ -78,7 +78,7 @@ class DataflowProvenance private() {
     dao.deleteDataElement(dataElement)
   }
 
-  def informNewDepencencie(dataElement: DataElement[_ <: Any], id: UUID): Unit = {
+  def informNewDependency(dataElement: DataElement[_ <: Any], id: UUID): Unit = {
     dao.insertDependencyOfDataElement(dataElement, id)
   }
 

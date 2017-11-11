@@ -15,9 +15,9 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   private val STMT_INSERT_TASK = con.prepare(
     """
       |INSERT INTO dfanalyzer."Task"
-      |            ("executionID", id, description, "transformationType")
+      |            ("executionID", id, description, "transformationType", "schemaFields")
       |VALUES
-      |            (?, ?, ?, ?);
+      |            (?, ?, ?, ?, ?);
     """.stripMargin)
 
   private val STMT_DEPENDENCIES_OF_TASK = con.prepare(
@@ -29,13 +29,18 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
     """.stripMargin)
 
   override def insertTask(task: Task): Unit = {
+    var fields: java.util.List[String] = null
+
+    if (task.schema != null)
+      fields = java.util.Arrays.asList(task.schema.geFielsNames(): _*)
 
     con.executeAsync(
       STMT_INSERT_TASK.bind(
         execution.ID,
         task.id,
         task.description,
-        task.transformationType.toString
+        task.transformationType.toString,
+        fields
       )
     )
 
@@ -101,7 +106,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
     con.executeAsync(
       STMT_INSERT_DATA_ELEMENT.bind(
         dataElement.id,
-        dataElement.value.toString,
+        dataElement.applySchemaToTheValue(),
         execution.ID
       )
     )
@@ -184,7 +189,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   override def updateDataElement(dataElement: DataElement[_ <: Any]): Unit = {
     con.executeAsync(
       STMT_UPDATE_DATA_ELEMENT.bind(
-        dataElement.value.toString,
+        dataElement.applySchemaToTheValue(),
         execution.ID,
         dataElement.id
       )

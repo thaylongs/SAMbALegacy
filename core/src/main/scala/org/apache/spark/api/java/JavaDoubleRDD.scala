@@ -19,7 +19,7 @@ package org.apache.spark.api.java
 
 import java.lang.{Double => JDouble}
 
-import br.uff.spark.{DataElement, TransformationGroup}
+import br.uff.spark.{DataElement, DataElementSchema, TransformationGroup}
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
@@ -300,6 +300,16 @@ class JavaDoubleRDD(val srdd: RDD[scala.Double])
     */
   def finishTransformationGroup(transformationGroup: TransformationGroup): JavaDoubleRDD = {
     srdd.finishTransformationGroup(transformationGroup)
+    this
+  }
+
+  /**
+    * Assign a schema to process the data
+    *
+    * @param schema
+    */
+  def setSchema(schema: DataElementSchema[Double]): JavaDoubleRDD = {
+    srdd.setSchema(schema)
     this
   }
 }
