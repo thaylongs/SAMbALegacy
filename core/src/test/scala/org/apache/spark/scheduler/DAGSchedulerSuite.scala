@@ -20,15 +20,16 @@ package org.apache.spark.scheduler
 import java.util.Properties
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 
-import br.uff.spark
 import br.uff.spark.DataElement
 
 import scala.annotation.meta.param
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Map}
 import scala.language.reflectiveCalls
 import scala.util.control.NonFatal
-import org.scalatest.concurrent.TimeLimits
+
+import org.scalatest.concurrent.{Signaler, ThreadSignaler, TimeLimits}
 import org.scalatest.time.SpanSugar._
+
 import org.apache.spark._
 import org.apache.spark.broadcast.BroadcastManager
 import org.apache.spark.rdd.RDD
@@ -102,6 +103,9 @@ class DAGSchedulerSuiteDummyException extends Exception
 class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with TimeLimits {
 
   import DAGSchedulerSuite._
+
+  // Necessary to make ScalaTest 3.x interrupt a thread on the JVM like ScalaTest 2.2.x
+  implicit val defaultSignaler: Signaler = ThreadSignaler
 
   val conf = new SparkConf
   /** Set of TaskSets the DAGScheduler has requested executed. */

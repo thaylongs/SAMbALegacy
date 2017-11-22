@@ -14,28 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.status.api.v1
 
-import javax.ws.rs.{GET, PathParam, Produces}
-import javax.ws.rs.core.MediaType
+package org.apache.spark.status
 
-import org.apache.spark.JobExecutionStatus
-import org.apache.spark.ui.SparkUI
-import org.apache.spark.ui.jobs.UIData.JobUIData
+import java.util.concurrent.TimeUnit
 
-@Produces(Array(MediaType.APPLICATION_JSON))
-private[v1] class OneJobResource(ui: SparkUI) {
+import org.apache.spark.internal.config._
 
-  @GET
-  def oneJob(@PathParam("jobId") jobId: Int): JobData = {
-    val statusToJobs: Seq[(JobExecutionStatus, Seq[JobUIData])] =
-      AllJobsResource.getStatusToJobs(ui)
-    val jobOpt = statusToJobs.flatMap(_._2).find { jobInfo => jobInfo.jobId == jobId}
-    jobOpt.map { job =>
-      AllJobsResource.convertJobData(job, ui.jobProgressListener, false)
-    }.getOrElse {
-      throw new NotFoundException("unknown job: " + jobId)
-    }
-  }
+private[spark] object config {
+
+  val LIVE_ENTITY_UPDATE_PERIOD = ConfigBuilder("spark.ui.liveUpdate.period")
+    .timeConf(TimeUnit.NANOSECONDS)
+    .createWithDefaultString("100ms")
+
+  val MAX_RETAINED_ROOT_NODES = ConfigBuilder("spark.ui.dagGraph.retainedRootRDDs")
+    .intConf
+    .createWithDefault(Int.MaxValue)
 
 }

@@ -19,7 +19,7 @@ package org.apache.spark
 
 import br.uff.spark.DataflowUtils
 import org.scalatest.Matchers
-import org.scalatest.concurrent.TimeLimits._
+import org.scalatest.concurrent.{Signaler, ThreadSignaler, TimeLimits}
 import org.scalatest.time.{Millis, Span}
 import org.apache.spark.security.EncryptionFunSuite
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
@@ -30,7 +30,10 @@ class NotSerializableExn(val notSer: NotSerializableClass) extends Throwable() {
 
 
 class DistributedSuite extends SparkFunSuite with Matchers with LocalSparkContext
-  with EncryptionFunSuite {
+  with EncryptionFunSuite with TimeLimits {
+
+  // Necessary to make ScalaTest 3.x interrupt a thread on the JVM like ScalaTest 2.2.x
+  implicit val defaultSignaler: Signaler = ThreadSignaler
 
   val clusterUrl = "local-cluster[2,1,1024]"
 

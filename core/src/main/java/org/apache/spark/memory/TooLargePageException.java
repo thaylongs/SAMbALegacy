@@ -14,21 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.status.api.v1
 
-import javax.ws.rs.{GET, PathParam, Produces}
-import javax.ws.rs.core.MediaType
+package org.apache.spark.memory;
 
-import org.apache.spark.ui.SparkUI
-
-@Produces(Array(MediaType.APPLICATION_JSON))
-private[v1] class OneRDDResource(ui: SparkUI) {
-
-  @GET
-  def rddData(@PathParam("rddId") rddId: Int): RDDStorageInfo = {
-    AllRDDResource.getRDDStorageInfo(rddId, ui.storageListener, true).getOrElse(
-      throw new NotFoundException(s"no rdd found w/ id $rddId")
-    )
+public class TooLargePageException extends RuntimeException {
+  TooLargePageException(long size) {
+    super("Cannot allocate a page of " + size + " bytes.");
   }
-
 }

@@ -14,27 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.status.api.v1
 
-import javax.ws.rs.{GET, Produces}
-import javax.ws.rs.core.MediaType
+package org.apache.spark.sql.execution
 
-import org.apache.spark.ui.SparkUI
-import org.apache.spark.ui.exec.ExecutorsPage
+import org.apache.spark.sql.QueryTest
+import org.apache.spark.sql.test.SharedSQLContext
 
-@Produces(Array(MediaType.APPLICATION_JSON))
-private[v1] class ExecutorListResource(ui: SparkUI) {
+class SparkPlanSuite extends QueryTest with SharedSQLContext {
 
-  @GET
-  def executorList(): Seq[ExecutorSummary] = {
-    val listener = ui.executorsListener
-    listener.synchronized {
-      // The follow codes should be protected by `listener` to make sure no executors will be
-      // removed before we query their status. See SPARK-12784.
-      val storageStatusList = listener.activeStorageStatusList
-      (0 until storageStatusList.size).map { statusId =>
-        ExecutorsPage.getExecInfo(listener, statusId, isActive = true)
-      }
-    }
+  test("SPARK-21619 execution of a canonicalized plan should fail") {
+    val plan = spark.range(10).queryExecution.executedPlan.canonicalized
+
+    intercept[IllegalStateException] { plan.execute() }
+    intercept[IllegalStateException] { plan.executeCollect() }
+    intercept[IllegalStateException] { plan.executeCollectPublic() }
+    intercept[IllegalStateException] { plan.executeToIterator() }
+    intercept[IllegalStateException] { plan.executeBroadcast() }
+    intercept[IllegalStateException] { plan.executeTake(1) }
   }
+
 }
