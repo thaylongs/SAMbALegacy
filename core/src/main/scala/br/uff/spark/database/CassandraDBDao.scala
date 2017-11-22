@@ -32,7 +32,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
     var fields: java.util.List[String] = null
 
     if (task.schema != null)
-      fields = java.util.Arrays.asList(task.schema.geFielsNames(): _*)
+      fields = java.util.Arrays.asList(task.schema.geFieldsNames(): _*)
 
     con.executeAsync(
       STMT_INSERT_TASK.bind(

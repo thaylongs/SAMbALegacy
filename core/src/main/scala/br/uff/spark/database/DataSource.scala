@@ -11,7 +11,7 @@ object DataSource {
   private val waitForClose = new AtomicInteger()
 
   def upCount(): Unit = {
-    waitForClose.incrementAndGet();
+    waitForClose.incrementAndGet()
   }
 
   def downCount() = {
