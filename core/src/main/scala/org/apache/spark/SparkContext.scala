@@ -24,6 +24,7 @@ import java.util.{Arrays, Locale, Properties, ServiceLoader, UUID}
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 
+import br.uff.spark.advancedpipe.{FileGroup, FileGroupTemplate}
 import br.uff.spark.{DataElement, DataflowProvenance, DataflowUtils, TransformationType}
 
 import scala.collection.JavaConverters._
@@ -1309,6 +1310,32 @@ class SparkContext(config: SparkConf) extends Logging {
     new ReliableCheckpointRDD[T](this, path)
   }
 
+  /* Spark - UFF */
+
+  def setScriptDir(dir: String): Unit = {
+    var _dir = dir.trim
+    if (!_dir.endsWith("/"))
+      _dir += "/"
+    conf.set("INTERNAL_SCRIPT_DIR", _dir)
+  }
+
+  def fileGroup(fileGroupTemplate: FileGroupTemplate*): RDD[FileGroup] = withScope {
+    val allFileGroups = fileGroupTemplate
+      .map(fgTemplate => (fgTemplate, this.binaryFiles(fgTemplate.allPaths).ignoreIt()))
+      .map({ case (template, rdd) =>
+        rdd.coalesce(1)
+          .mapPartitionsWithTaskInfo[FileGroup] { (iter, task) =>
+          val cache = iter.toList
+          val result = FileGroup.fileGroupOf(template.baseDir, template.extrasInfo, cache.map(a => a.value).toArray)
+          Iterator(DataElement.of(result, task, task.isIgnored, cache: _*))
+        }.setName("File group: " + template.baseDir.toString)
+          .setTransformationType(TransformationType.FILE_GROUP)
+      })
+    union(allFileGroups)
+  }
+
+  /* Spark - UFF */
+
   /** Build the union of a list of RDDs. */
   def union[T: ClassTag](rdds: Seq[RDD[T]]): RDD[T] = withScope {
     val partitioners = rdds.flatMap(_.partitioner).toSet
@@ -2173,6 +2200,7 @@ class SparkContext(config: SparkConf) extends Logging {
       resultHandler: (Int, U) => Unit,
       resultFunc: => R): SimpleFutureAction[R] =
   {
+    rdd.checkAndPersistProvenance()
     assertNotStopped()
     val cleanF = clean(processPartition)
     val callSite = getCallSite

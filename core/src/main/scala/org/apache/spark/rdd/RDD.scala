@@ -21,6 +21,7 @@ import java.util.{Random, UUID}
 
 import br.uff.spark.TransformationType.TransformationType
 import br.uff.spark._
+import br.uff.spark.advancedpipe.FileGroup
 
 import scala.collection.{AbstractIterator, Map, mutable}
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
@@ -1619,7 +1620,7 @@ abstract class RDD[T: ClassTag](
       val text = new Text()
       iter.map { x =>
         text.set(x.value.toString)
-        DataElement.of((NullWritable.get(), text), null, true)
+        DataElement.of((NullWritable.get(), text), task, task.isIgnored, x)
       }
     }.ignoreIt()
     RDD.rddToPairRDDFunctions(r)(nullWritableClassTag, textClassTag, null)
@@ -2026,4 +2027,12 @@ object RDD {
     : DoubleRDDFunctions = {
     new DoubleRDDFunctions(rdd.map(x => num.toDouble(x)))
   }
+
+  /* Spark - UFF */
+
+  implicit def fileGroupRDDToFileGroupRDDFunctions(rdd: RDD[FileGroup]): FileGroupRDDFunctions = {
+    new FileGroupRDDFunctions(rdd)
+  }
+
+  /* Spark - UFF */
 }
