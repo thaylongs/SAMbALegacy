@@ -123,9 +123,18 @@ class AsyncRDDActions[T: ClassTag](self: RDD[T]) extends Serializable with Loggi
   /**
    * Applies a function f to all elements of this RDD.
    */
-  def foreachAsync(f: DataElement[T] => Unit): FutureAction[Unit] = self.withScope {
+  def foreachAsyncWithDataElement(f: DataElement[T] => Unit): FutureAction[Unit] = self.withScope {
     val cleanF = self.context.clean(f)
     self.context.submitJob[T, Unit, Unit](self, _.foreach(cleanF), Range(0, self.partitions.length),
+      (index, data) => Unit, Unit)
+  }
+
+  /**
+    * Applies a function f to all elements of this RDD.
+    */
+  def foreachAsync(f:T => Unit): FutureAction[Unit] = self.withScope {
+    val cleanF = self.context.clean(f)
+    self.context.submitJob[T, Unit, Unit](self, _.map(e => e.value).foreach(cleanF), Range(0, self.partitions.length),
       (index, data) => Unit, Unit)
   }
 

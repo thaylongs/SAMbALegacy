@@ -21,6 +21,8 @@ import java.io.Closeable
 import java.util
 import java.util.{Map => JMap}
 
+import br.uff.spark.advancedpipe.{FileGroup, FileGroupTemplate}
+
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
@@ -505,6 +507,13 @@ class JavaSparkContext(val sc: SparkContext)
     val rdd = sc.newAPIHadoopRDD(conf, fClass, kClass, vClass)
     new JavaNewHadoopRDD(rdd.asInstanceOf[NewHadoopRDD[K, V]])
   }
+
+  /* Spark - UFF */
+  def fileGroup(fileGroupTemplate: java.util.List[FileGroupTemplate]): JavaRDD[FileGroup] = {
+    sc.fileGroup(fileGroupTemplate.asScala: _*)
+  }
+  /* Spark - UFF */
+
 
   /** Build the union of two or more RDDs. */
   override def union[T](first: JavaRDD[T], rest: java.util.List[JavaRDD[T]]): JavaRDD[T] = {

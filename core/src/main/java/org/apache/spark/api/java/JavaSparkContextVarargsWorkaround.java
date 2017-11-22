@@ -17,6 +17,9 @@
 
 package org.apache.spark.api.java;
 
+import br.uff.spark.advancedpipe.FileGroup;
+import br.uff.spark.advancedpipe.FileGroupTemplate;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -59,9 +62,25 @@ abstract class JavaSparkContextVarargsWorkaround {
     return union(rdds[0], rest);
   }
 
+  /* Spark - UFF */
+  public JavaRDD<FileGroup> fileGroup(FileGroupTemplate... fileGroupTemplate) {
+    if (fileGroupTemplate.length == 0) {
+      throw new IllegalArgumentException("FileGroup called on empty list");
+    }
+    List<FileGroupTemplate> rest = new ArrayList<>(fileGroupTemplate.length - 1);
+    for (FileGroupTemplate groupTemplate : fileGroupTemplate) {
+      rest.add(groupTemplate);
+    }
+    return this.fileGroup(rest);
+  }
+
   // These methods take separate "first" and "rest" elements to avoid having the same type erasure
   public abstract <T> JavaRDD<T> union(JavaRDD<T> first, List<JavaRDD<T>> rest);
   public abstract JavaDoubleRDD union(JavaDoubleRDD first, List<JavaDoubleRDD> rest);
   public abstract <K, V> JavaPairRDD<K, V> union(JavaPairRDD<K, V> first, List<JavaPairRDD<K, V>>
     rest);
+
+  /* Spark - UFF */
+  public abstract JavaRDD<FileGroup> fileGroup(List<FileGroupTemplate> fileGroupTemplate);
+
 }

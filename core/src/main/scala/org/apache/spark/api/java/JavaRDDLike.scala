@@ -728,7 +728,12 @@ trait JavaRDDLike[T, This <: JavaRDDLike[T, This]] extends Serializable {
    * The asynchronous version of the `foreach` action, which
    * applies a function f to all the elements of this RDD.
    */
-  def foreachAsync(f: VoidFunction[DataElement[T]]): JavaFutureAction[Void] = {
+  def foreachAsyncWithDataElement(f: VoidFunction[DataElement[T]]): JavaFutureAction[Void] = {
+    new JavaFutureActionWrapper[Unit, Void](rdd.foreachAsyncWithDataElement(x => f.call(x)),
+      { x => null.asInstanceOf[Void] })
+  }
+
+  def foreachAsync(f: VoidFunction[T]): JavaFutureAction[Void] = {
     new JavaFutureActionWrapper[Unit, Void](rdd.foreachAsync(x => f.call(x)),
       { x => null.asInstanceOf[Void] })
   }

@@ -30,5 +30,6 @@ object TransformationType extends Enumeration {
   SORT_BY_KEY,
   GLOM,
   RANGE,
-  COALESCED = Value
+  COALESCED,
+  FILE_GROUP = Value
 }
