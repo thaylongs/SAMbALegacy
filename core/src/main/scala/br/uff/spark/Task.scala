@@ -14,7 +14,7 @@ class Task(@transient val rdd: RDD[_ <: Any]) extends Serializable {
   var transformationType: TransformationType = TransformationType.UNKNOWN
   var isIgnored = false
   var alreadyPersisted = false
-  var description: String = "TaskID_"+rdd.id
+  var description: String = "TaskID_" + (if (rdd == null) "" else rdd.id) //This if is for run test without RDD
 
   /* Schema of Data*/
   var schema: DataElementSchema[_] = null
