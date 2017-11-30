@@ -14,7 +14,7 @@ class Task(@transient val rdd: RDD[_ <: Any]) extends Serializable {
   var transformationType: TransformationType = TransformationType.UNKNOWN
   var isIgnored = false
   var alreadyPersisted = false
-  var description: String = ""
+  var description: String = "TaskID_"+rdd.id
 
   /* Schema of Data*/
   var schema: DataElementSchema[_] = null

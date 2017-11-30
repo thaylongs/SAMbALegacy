@@ -3,6 +3,7 @@ package org.apache.spark.rdd
 import java.io._
 
 import br.uff.spark.advancedpipe.{ExecutionPlanning, FileElement, FileGroup}
+import br.uff.spark.versioncontrol.VersionControl
 import br.uff.spark.vfs.MemoryFS
 import br.uff.spark.{DataElement, TransformationType}
 import com.google.common.io.Files
@@ -34,7 +35,7 @@ private[spark] class AdvancedPipeRDD(
         //Next entry
         val nextEntry = input.next()
         val entry = nextEntry.value
-        executionPlan = f.apply(entry.getExtraInfo.asScala.toMap, entry.getFileElements)
+        executionPlan = f.apply(entry.getExtrasInfo.asScala.toMap, entry.getFileElements)
 
         //Making the ProcessBuilder
         val pb = new ProcessBuilder(executionPlan.command.toList.asJava)
@@ -43,13 +44,35 @@ private[spark] class AdvancedPipeRDD(
         pb.redirectErrorStream(executionPlan.redirectErrorStream)
 
         //Running the command
-        val processedElement = runCommand(pb, entry)
-        DataElement.of(processedElement, task, task.isIgnored, nextEntry)
+        val fileElements = runCommand(pb, entry)
+
+        //Getting modified files
+        val allNewAndModifiedFiles = fileElements.asScala.filter(f => f.isModified).toList
+
+        //Creating a File Group
+        val result = FileGroup.of(fileElements, false)
+        result.setName(entry.getName)
+
+        //Setting the Extras Info
+        if (executionPlan.getExtrasInfoForGeneratedRDD != null)
+          result.setExtrasInfo(executionPlan.getExtrasInfoForGeneratedRDD.apply().asJava)
+        else
+          result.setExtrasInfo(entry.getExtrasInfo)
+
+        //Creating the  Data Element that represente this result
+        val dataElement = DataElement.of(result, task, task.isIgnored, nextEntry)
+
+        //If Enable, this will commit the changes in the repository
+        if (VersionControl.isEnable) {
+          VersionControl.getInstance.writeFileGroup(task, result)
+        }
+
+        dataElement
       }
     }
   }
 
-  def runCommand(pb: ProcessBuilder, fileGroup: FileGroup): FileGroup = {
+  def runCommand(pb: ProcessBuilder, fileGroup: FileGroup): java.util.List[FileElement] = {
     val taskDirectory = Files.createTempDir()
     pb.directory(taskDirectory)
     logDebug("Task Directory = " + taskDirectory)
@@ -80,19 +103,17 @@ private[spark] class AdvancedPipeRDD(
         s"Command ran: " + executionPlan.command.mkString(" ") + s" in $taskDirectory")
 
       //Processing Results
-      val result = memoryFS.toFileGroup(executionPlan.filterFilesForGeneratedRDD.apply(_))
-      if (executionPlan.getExtraInfoForGeneratedRDD != null)
-        result.setExtraInfo(executionPlan.getExtraInfoForGeneratedRDD.apply().asJava)
-      else
-        result.setExtraInfo(fileGroup.getExtraInfo)
-      result
+      memoryFS.toFileElementList(executionPlan.filterFilesForGeneratedRDD.apply(_))
     } catch {
       case t: Throwable => {
+        Thread.sleep(100000)
         throw t
       }
     } finally {
       memoryFS.umount()
-      taskDirectory.delete()
+      if (!taskDirectory.delete()) {
+        taskDirectory.deleteOnExit()
+      }
     }
 
   }

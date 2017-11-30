@@ -18,14 +18,14 @@
 package org.apache.spark
 
 import java.io._
-import java.lang.reflect.Constructor
 import java.net.URI
 import java.util.{Arrays, Locale, Properties, ServiceLoader, UUID}
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 
 import br.uff.spark.advancedpipe.{FileGroup, FileGroupTemplate}
-import br.uff.spark.{DataElement, DataflowProvenance, DataflowUtils, TransformationType}
+import br.uff.spark.versioncontrol.VersionControl
+import br.uff.spark.{DataElement, DataflowProvenance, TransformationType}
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
@@ -365,7 +365,7 @@ class SparkContext(config: SparkConf) extends Logging {
     Utils.setLogLevel(org.apache.log4j.Level.toLevel(upperCased))
   }
 
-  var dfAnalyzerExecutionID: UUID = null
+  var executionID: UUID = null
   try {
     _conf = config.clone()
     _conf.validateSettings()
@@ -381,7 +381,10 @@ class SparkContext(config: SparkConf) extends Logging {
     logInfo(s"Submitted application: $appName")
 
     /* Starting connection with database */
-    dfAnalyzerExecutionID = DataflowProvenance.getInstance.init(this)
+    executionID = DataflowProvenance.getInstance.init(this)
+    if (VersionControl.isEnable) {
+      VersionControl.getInstance.initAll(this)
+    }
 
     // System property spark.yarn.app.id must be set if user code ran by AM on a YARN cluster
     if (master == "yarn" && deployMode == "cluster" && !_conf.contains("spark.yarn.app.id")) {
@@ -1337,13 +1340,19 @@ class SparkContext(config: SparkConf) extends Logging {
     val allFileGroups = fileGroupTemplate
       .map(fgTemplate => (fgTemplate, this.binaryFiles(fgTemplate.allPaths).ignoreIt()))
       .map({ case (template, rdd) =>
-        rdd.coalesce(1)
+        val rddResult = rdd.coalesce(1)
           .mapPartitionsWithTaskInfo[FileGroup] { (iter, task) =>
           val cache = iter.toList
           val result = FileGroup.fileGroupOf(template.baseDir, template.extrasInfo, cache.map(a => a.value).toArray)
-          Iterator(DataElement.of(result, task, task.isIgnored, cache: _*))
-        }.setName("File group: " + template.baseDir.toString)
-          .setTransformationType(TransformationType.FILE_GROUP)
+          if (VersionControl.isEnable) {
+            result.setName(template.name)
+            VersionControl.getInstance.writeFileGroup(task, result)
+          }
+          val dataElement = DataElement.of(result, task, task.isIgnored, cache: _*)
+          Iterator(dataElement)
+        }.setTransformationType(TransformationType.FILE_GROUP)
+        rddResult.setName("File group = " + template.getName)
+        rddResult
       })
     union(allFileGroups)
   }
@@ -1995,6 +2004,7 @@ class SparkContext(config: SparkConf) extends Logging {
     System.clearProperty("SPARK_YARN_MODE")
     SparkContext.clearActiveContext()
     DataflowProvenance.getInstance.finish()
+    VersionControl.getInstance.finish()
     logInfo("Successfully stopped SparkContext")
   }
 

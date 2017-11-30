@@ -11,6 +11,7 @@ class FileGroupTemplateBuilder() {
   private var baseDir: File = null
   private var files: java.util.List[String] = null
   private var extrasInfo: java.util.Map[String, Any] = null
+  private var name: String = null
 
   def baseDir(baseDir: File): FileGroupTemplateBuilder = {
     this.baseDir = baseDir
@@ -60,6 +61,11 @@ class FileGroupTemplateBuilder() {
 
   def clearExtraInfos: FileGroupTemplateBuilder = {
     if (this.extrasInfo != null) this.extrasInfo.clear
+    this
+  }
+
+  def name(name: String): FileGroupTemplateBuilder = {
+    this.name = name
     this
   }
 

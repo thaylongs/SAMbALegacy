@@ -11,15 +11,15 @@ object FileGroupBuilder {
 class FileGroupBuilder {
 
   private val data = new java.util.LinkedList[FileElement]
-  private val extraInfo = new util.HashMap[String, Any]()
+  private val extrasInfo = new util.HashMap[String, Any]()
 
   def putAll(map: java.util.Map[String, Any]): FileGroupBuilder = {
-    extraInfo.putAll(map)
+    extrasInfo.putAll(map)
     this
   }
 
   def put(key: String, value: Any): FileGroupBuilder = {
-    extraInfo.put(key, value)
+    extrasInfo.put(key, value)
     this
   }
 
@@ -35,7 +35,7 @@ class FileGroupBuilder {
 
   def build(): FileGroup = {
     val result = FileGroup.of(data, false)
-    result.setExtraInfo(extraInfo)
+    result.setExtrasInfo(extrasInfo)
     result
   }
 

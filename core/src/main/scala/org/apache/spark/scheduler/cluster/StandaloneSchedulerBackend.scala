@@ -111,7 +111,7 @@ private[spark] class StandaloneSchedulerBackend(
       } else {
         None
       }
-    val appDesc = ApplicationDescription(sc.dfAnalyzerExecutionID, sc.appName, maxCores, sc.executorMemory, command,
+    val appDesc = ApplicationDescription(sc.executionID, sc.appName, maxCores, sc.executorMemory, command,
       webUrl, sc.eventLogDir, sc.eventLogCodec, coresPerExecutor, initialExecutorLimit)
     client = new StandaloneAppClient(sc.env.rpcEnv, masters, appDesc, this, conf)
     client.start()

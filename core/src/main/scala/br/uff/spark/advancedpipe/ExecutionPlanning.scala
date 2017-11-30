@@ -16,6 +16,6 @@ class ExecutionPlanning(
   var onReadErrorLine: (String) => Unit = errorLine => logError(errorLine)
 
   var filterFilesForGeneratedRDD: (FileElement) => Boolean = (_) => true
-  var getExtraInfoForGeneratedRDD: () => Map[String, AnyRef] = null
+  var getExtrasInfoForGeneratedRDD: () => Map[String, AnyRef] = null
 
 }

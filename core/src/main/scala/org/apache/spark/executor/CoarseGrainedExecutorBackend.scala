@@ -19,25 +19,25 @@ package org.apache.spark.executor
 
 import java.net.URL
 import java.nio.ByteBuffer
-import java.util.{Locale, UUID}
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.{Locale, UUID}
 
 import br.uff.spark.DataflowProvenance
-
-import scala.collection.mutable
-import scala.util.{Failure, Success}
-import scala.util.control.NonFatal
-
-import org.apache.spark._
+import br.uff.spark.versioncontrol.VersionControl
 import org.apache.spark.TaskState.TaskState
+import org.apache.spark._
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.deploy.worker.WorkerWatcher
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc._
-import org.apache.spark.scheduler.{ExecutorLossReason, TaskDescription}
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
+import org.apache.spark.scheduler.{ExecutorLossReason, TaskDescription}
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.{ThreadUtils, Utils}
+
+import scala.collection.mutable
+import scala.util.control.NonFatal
+import scala.util.{Failure, Success}
 
 private[spark] class CoarseGrainedExecutorBackend(
     override val rpcEnv: RpcEnv,
@@ -122,6 +122,7 @@ private[spark] class CoarseGrainedExecutorBackend(
           // However, if `executor.stop()` runs in some thread of RpcEnv, RpcEnv won't be able to
           // stop until `executor.stop()` returns, which becomes a dead-lock (See SPARK-14180).
           // Therefore, we put this line in a new thread.
+          VersionControl.getInstance.finish()
           DataflowProvenance.getInstance.finish()
           executor.stop()
         }
@@ -189,10 +190,10 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       appId: String,
       workerUrl: Option[String],
       userClassPath: Seq[URL],
-      dfAnalyzerExecutionID:UUID) {
+      executionID:UUID) {
 
     /* Starting connection with database */
-    DataflowProvenance.getInstance.init(dfAnalyzerExecutionID)
+    DataflowProvenance.getInstance.init(executionID)
 
     Utils.initDaemon(log)
 

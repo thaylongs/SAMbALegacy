@@ -21,17 +21,16 @@ import java.io._
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
-import scala.collection.JavaConverters._
-
 import com.google.common.io.Files
-
-import org.apache.spark.{SecurityManager, SparkConf}
-import org.apache.spark.deploy.{ApplicationDescription, ExecutorState}
 import org.apache.spark.deploy.DeployMessages.ExecutorStateChanged
+import org.apache.spark.deploy.{ApplicationDescription, ExecutorState}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
-import org.apache.spark.util.{ShutdownHookManager, Utils}
 import org.apache.spark.util.logging.FileAppender
+import org.apache.spark.util.{ShutdownHookManager, Utils}
+import org.apache.spark.{SecurityManager, SparkConf}
+
+import scala.collection.JavaConverters._
 
 /**
  * Manages the execution of one executor process.
@@ -54,7 +53,7 @@ private[deploy] class ExecutorRunner(
     conf: SparkConf,
     val appLocalDirs: Seq[String],
     @volatile var state: ExecutorState.Value,
-    val dfAnalyzerExecutionID: UUID)
+    val executionID: UUID)
   extends Logging {
 
   private val fullId = appId + "/" + execId
@@ -135,7 +134,7 @@ private[deploy] class ExecutorRunner(
     case "{{HOSTNAME}}" => host
     case "{{CORES}}" => cores.toString
     case "{{APP_ID}}" => appId
-    case "{{EXECUTION_ID}}" => dfAnalyzerExecutionID.toString
+    case "{{EXECUTION_ID}}" => executionID.toString
     case other => other
   }
 

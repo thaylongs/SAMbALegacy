@@ -1,16 +1,17 @@
 package br.uff.spark.advancedpipe;
 
-import static scala.collection.JavaConverters.mapAsJavaMapConverter;
-
+import org.apache.commons.io.FileUtils;
 import org.apache.spark.input.PortableDataStream;
 import scala.Tuple2;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.stream.Collectors;
+
+import static scala.collection.JavaConverters.mapAsJavaMapConverter;
 
 /**
  * @author Thaylon Guedes Santos
@@ -18,6 +19,7 @@ import java.util.*;
  */
 public class FileGroup implements Serializable {
 
+    private String name = null;
     private Map<String, Object> extraInfo;
     private FileElement[] fileElements;
 
@@ -26,7 +28,21 @@ public class FileGroup implements Serializable {
         this.fileElements = fileElements;
     }
 
-    public Map<String, ? extends Object> getExtraInfo() {
+    public String getName() {
+        if (name == null) {
+            name = Arrays.stream(fileElements)
+                    .map(FileElement::getFileName)
+                    .sorted()
+                    .collect(Collectors.joining("_"));
+        }
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public Map<String, ? extends Object> getExtrasInfo() {
         return extraInfo;
     }
 
@@ -34,7 +50,7 @@ public class FileGroup implements Serializable {
         return fileElements;
     }
 
-    public void setExtraInfo(Map<String, ? extends Object> extraInfo) {
+    public void setExtrasInfo(Map<String, ? extends Object> extraInfo) {
         this.extraInfo = (Map<String, Object>) extraInfo;
     }
 
@@ -43,7 +59,7 @@ public class FileGroup implements Serializable {
         for (FileElement fileElement : fileElements) {
             File targetFolder = new File(dir, fileElement.getFilePath());
             targetFolder.mkdirs();
-            Files.write(new File(targetFolder, fileElement.getFileName()).toPath(), fileElement.getContents());
+            FileUtils.copyInputStreamToFile(fileElement.getContents().toInputStream(), new File(targetFolder, fileElement.getFileName()));
         }
     }
 
@@ -65,9 +81,9 @@ public class FileGroup implements Serializable {
 
     public static FileGroup of(String filePath, String fileName, byte[] content, Map<String, Object> extraInfo) {
         FileElement[] fileElement = new FileElement[]{
-                new FileElement(filePath, fileName, content.length, content)
+                new FileElement(filePath, fileName, content)
         };
-        return new FileGroup((Map<String, Object>) extraInfo, fileElement);
+        return new FileGroup(extraInfo, fileElement);
     }
 
     public static FileGroup of(List<FileElement> result, boolean stillModified) {
@@ -77,11 +93,10 @@ public class FileGroup implements Serializable {
         return new FileGroup(null, result.toArray(new FileElement[result.size()]));
     }
 
-    public static FileGroup fileGroupOf(File baseDir, Map<String, ? extends Object> extraInfo, Tuple2<String, PortableDataStream>[] data) {
+    public static FileGroup fileGroupOf(File baseDir, Map<String, ? extends Object> extraInfo, Tuple2<String, PortableDataStream>[] data) throws IOException {
         FileElement[] fileElements = new FileElement[data.length];
         for (int i = 0; i < data.length; i++) {
             Tuple2<String, PortableDataStream> element = data[i];
-            byte[] content = element._2.toArray();
             File file = new File(element._1.split(":")[1]);
             String filePath;
             if (baseDir != null) {
@@ -93,7 +108,7 @@ public class FileGroup implements Serializable {
                 filePath = file.getParent();
             }
             String fileName = file.getName();
-            fileElements[i] = new FileElement(filePath, fileName, content.length, content);
+            fileElements[i] = new FileElement(filePath, fileName, element._2.open());
         }
         FileGroup result = new FileGroup((Map<String, Object>) extraInfo, fileElements);
         return result;

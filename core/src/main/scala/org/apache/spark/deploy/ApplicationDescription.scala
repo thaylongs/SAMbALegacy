@@ -21,7 +21,7 @@ import java.net.URI
 import java.util.UUID
 
 private[spark] case class ApplicationDescription(
-    dfAnalyzerExecutionID: UUID,
+    executionID: UUID,
     name: String,
     maxCores: Option[Int],
     memoryPerExecutorMB: Int,

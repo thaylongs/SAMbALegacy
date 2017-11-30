@@ -17,6 +17,7 @@ import ru.serce.jnrfuse.struct.FuseFileInfo;
 import ru.serce.jnrfuse.struct.Statvfs;
 import scala.Function1;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedList;
@@ -44,11 +45,22 @@ public class MemoryFS extends FuseStubFS {
 
     @Override
     public void mount(Path mountPoint, boolean blocking, boolean debug, String[] fuseOpts) {
-        loadFileSystem();
+        if (fileGroup != null)
+            try {
+                loadFileSystem();
+            } catch (IOException e) {
+                log.error("Fail on mount disk", e);
+                e.printStackTrace();
+            }
         super.mount(mountPoint, blocking, debug, fuseOpts);
     }
 
-    private void loadFileSystem() {
+    @Override
+    public int flush(String path, FuseFileInfo fi) {
+        return super.flush(path, fi);
+    }
+
+    private void loadFileSystem() throws IOException {
         for (FileElement fileElement : fileGroup.getFileElements()) {
             MemoryDirectory current = rootDirectory;
             if (!fileElement.getFilePath().isEmpty()) {
@@ -63,7 +75,7 @@ public class MemoryFS extends FuseStubFS {
                     }
                 }
             }
-            current.add(new MemoryFile(this, fileElement.getFileName(), fileElement.getContents(), current));
+            current.add(new MemoryFile(this, fileElement.getFileName(), fileElement.getContents().copy(), current, MemoryFileStatus.ALREADY_EXIST));
         }
     }
 
@@ -235,7 +247,13 @@ public class MemoryFS extends FuseStubFS {
         if (!(p instanceof MemoryFile)) {
             return -ErrorCodes.EISDIR();
         }
-        return ((MemoryFile) p).write(buf, size, offset);
+        try {
+            return ((MemoryFile) p).write(buf, size, offset);
+        } catch (Exception e) {
+            log.error("There isn't space for write this content, the max size for a File Element was Reached:  " + path, e);
+            e.printStackTrace();
+        }
+        return -ErrorCodes.ENOSPC();
     }
 
     //TODO
@@ -244,10 +262,10 @@ public class MemoryFS extends FuseStubFS {
         return super.chmod(path, mode);
     }
 
-    public FileGroup toFileGroup(Function1<FileElement, Boolean> filterFiles) {
+    public List<FileElement> toFileElementList(Function1<FileElement, Boolean> filterFiles) {
         List<FileElement> result = new LinkedList<>();
         buildFileGroup(result, filterFiles, "", rootDirectory);
-        return FileGroup.of(result, false);
+        return result;
     }
 
     //TODO Optimize it
@@ -259,8 +277,8 @@ public class MemoryFS extends FuseStubFS {
             } else {
                 MemoryFile file = (MemoryFile) content;
                 file.trim();
-                FileElement fileElement = new FileElement(currentPath, file.name, file.size, file.contents.array());
-                fileElement.setModified(file.modified);
+                FileElement fileElement = new FileElement(currentPath, file.name, file.contents);
+                fileElement.setModified(file.status != MemoryFileStatus.ALREADY_EXIST);
                 log.debug(fileElement);
                 if (filterFiles.apply(fileElement))
                     result.add(fileElement);

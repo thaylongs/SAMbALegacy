@@ -528,7 +528,7 @@ private[deploy] class Worker(
             workerUri,
             conf,
             appLocalDirs, ExecutorState.RUNNING,
-            appDesc.dfAnalyzerExecutionID
+            appDesc.executionID
           )
           executors(appId + "/" + execId) = manager
           manager.start()

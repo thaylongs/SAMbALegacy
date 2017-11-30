@@ -71,7 +71,7 @@ public class MemoryDirectory extends MemoryPath {
     }
 
     public synchronized void mkfile(String lastComponent) {
-        contents.add(new MemoryFile(memoryFS, lastComponent, new byte[0], this));
+        contents.add(new MemoryFile(memoryFS, lastComponent, this));
     }
 
     public synchronized void read(Pointer buf, FuseFillDir filler) {

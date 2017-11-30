@@ -6,7 +6,6 @@ import java.util.UUID
 
 import br.uff.spark.database.{CassandraDBDao, DataBaseBasicMethods, TestDBDao}
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
 
 import scala.collection.mutable
 
@@ -34,9 +33,9 @@ class DataflowProvenance private() {
     execution.ID
   }
 
-  def init(dfAnalyzerExecutionID: UUID) = {
+  def init(executionID: UUID) = {
     execution = new Execution(null)
-    execution.ID = dfAnalyzerExecutionID
+    execution.ID = executionID
     if (System.getenv("DISABLE_PROVENANCE") == null) {
       dao = new CassandraDBDao(execution)
     }

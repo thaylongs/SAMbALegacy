@@ -7,6 +7,7 @@ import java.util.Collections
 import java.util.function.Predicate
 
 import br.uff.spark.utils.ScalaUtils._
+
 import scala.beans.BeanProperty
 import scala.collection.JavaConverters._
 
@@ -60,5 +61,24 @@ class FileGroupTemplate(
     this(baseDir, files.asJava, new util.HashMap[String, Any](extrasInfo.asJava))
 
   def allPaths: String = files.asScala.map(f => f.toString).mkString(",")
+
+  var name: String = null
+
+  def setName(newName: String): FileGroupTemplate = {
+    name = newName
+    this
+  }
+
+  def getName: String = {
+    if (name == null) {
+      name = files.asScala
+        .map(f => f.getName)
+        .sorted
+        .map(name => name.replaceAllLiterally(".", "_"))
+        .map(name => name.replaceAllLiterally(" ", "_"))
+        .mkString(",")
+    }
+    name
+  }
 
 }
