@@ -101,21 +101,23 @@ class VersionControl private() {
   }
 
   def finish(): Unit = {
-    executorService.submit(new Runnable {
-      override def run(): Unit = {
-        if (somethingWasWriting) {
-          val exitValue = Process(Seq("git", "push"), tempDir).!
-          checkExitStatus(exitValue, "Success push the new files", "Failed on push the new files")
-          if (exitValue != 0) {
-            return
+    if (VersionControl.isEnable) {
+      executorService.submit(new Runnable {
+        override def run(): Unit = {
+          if (somethingWasWriting) {
+            val exitValue = Process(Seq("git", "push"), tempDir).!
+            checkExitStatus(exitValue, "Success push the new files", "Failed on push the new files")
+            if (exitValue != 0) {
+              return
+            }
+          }
+          if (!scala.reflect.io.File(tempDir).deleteRecursively()) {
+            log.error("Erro on Delete already used temp repository at: " + tempDir)
           }
         }
-        if (!scala.reflect.io.File(tempDir).deleteRecursively()) {
-          log.error("Erro on Delete already used temp repository at: " + tempDir)
-        }
-      }
-    })
-    executorService.shutdown()
+      })
+      executorService.shutdown()
+    }
   }
 
 }

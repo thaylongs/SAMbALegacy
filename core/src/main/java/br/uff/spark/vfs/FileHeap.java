@@ -36,8 +36,6 @@ public class FileHeap {
             byte[] block = new byte[8192];
             int len;
             while ((len = inputStream.read(block)) > 0) {
-                System.out.println("Lendo aquivos ------------");
-                System.out.println("dddd size: " + len + " > >" + Arrays.toString(block));
                 write(size, block, 0, len);
             }
         } finally {
