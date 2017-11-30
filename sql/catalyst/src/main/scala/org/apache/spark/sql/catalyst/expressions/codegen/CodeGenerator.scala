@@ -134,6 +134,17 @@ class CodegenContext {
   }
 
   /**
+   * Holding the variable name of the input row of the current operator, will be used by
+   * `BoundReference` to generate code.
+   *
+   * Note that if `currentVars` is not null, `BoundReference` prefers `currentVars` over `INPUT_ROW`
+   * to generate code. If you want to make sure the generated code use `INPUT_ROW`, you need to set
+   * `currentVars` to null, or set `currentVars(i)` to null for certain columns, before calling
+   * `Expression.genCode`.
+   */
+  final var INPUT_ROW = "i"
+
+  /**
    * Holding a list of generated columns as input of current operator, will be used by
    * BoundReference to generate code.
    */
@@ -385,9 +396,6 @@ class CodegenContext {
   final val JAVA_LONG = "long"
   final val JAVA_FLOAT = "float"
   final val JAVA_DOUBLE = "double"
-
-  /** The variable name of the input row in generated code. */
-  final var INPUT_ROW = "i"
 
   /**
    * The map from a variable name to it's next ID.
@@ -773,15 +781,38 @@ class CodegenContext {
    * beyond 1000kb, we declare a private, inner sub-class, and the function is inlined to it
    * instead, because classes have a constant pool limit of 65,536 named values.
    *
-   * @param row the variable name of row that is used by expressions
+   * Note that we will extract the current inputs of this context and pass them to the generated
+   * functions. The input is `INPUT_ROW` for normal codegen path, and `currentVars` for whole
+   * stage codegen path. Whole stage codegen path is not supported yet.
+   *
    * @param expressions the codes to evaluate expressions.
    */
-  def splitExpressions(row: String, expressions: Seq[String]): String = {
-    if (row == null || currentVars != null) {
-      // Cannot split these expressions because they are not created from a row object.
-      return expressions.mkString("\n")
+  def splitExpressions(expressions: Seq[String]): String = {
+    splitExpressions(expressions, funcName = "apply", extraArguments = Nil)
+  }
+
+  /**
+   * Similar to [[splitExpressions(expressions: Seq[String])]], but has customized function name
+   * and extra arguments.
+   *
+   * @param expressions the codes to evaluate expressions.
+   * @param funcName the split function name base.
+   * @param extraArguments the list of (type, name) of the arguments of the split function
+   *                       except for ctx.INPUT_ROW
+  */
+  def splitExpressions(
+      expressions: Seq[String],
+      funcName: String,
+      extraArguments: Seq[(String, String)]): String = {
+    // TODO: support whole stage codegen
+    if (INPUT_ROW == null || currentVars != null) {
+      expressions.mkString("\n")
+    } else {
+      splitExpressions(
+        expressions,
+        funcName,
+        arguments = ("InternalRow", INPUT_ROW) +: extraArguments)
     }
-    splitExpressions(expressions, funcName = "apply", arguments = ("InternalRow", row) :: Nil)
   }
 
   /**

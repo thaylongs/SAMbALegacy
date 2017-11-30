@@ -21,6 +21,7 @@ import br.uff.spark.DataflowUtils
 import org.scalatest.Matchers
 import org.scalatest.concurrent.{Signaler, ThreadSignaler, TimeLimits}
 import org.scalatest.time.{Millis, Span}
+
 import org.apache.spark.security.EncryptionFunSuite
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.io.ChunkedByteBuffer
@@ -154,47 +155,48 @@ class DistributedSuite extends SparkFunSuite with Matchers with LocalSparkContex
     sc.parallelize(1 to 10).count()
   }
 
-//  private def testCaching(conf: SparkConf, storageLevel: StorageLevel): Unit = { by thaylon
-//    sc = new SparkContext(conf.setMaster(clusterUrl).setAppName("test"))
-//    sc.jobProgressListener.waitUntilExecutorsUp(2, 30000)
-//    val data = sc.parallelize(1 to 1000, 10)
-//    val cachedData = data.persist(storageLevel)
-//    assert(cachedData.count === 1000)
-//    assert(sc.getExecutorStorageStatus.map(_.rddBlocksById(cachedData.id).size).sum ===
-//      storageLevel.replication * data.getNumPartitions)
-//    assert(cachedData.count === 1000)
-//    assert(cachedData.count === 1000)
-//
-//    // Get all the locations of the first partition and try to fetch the partitions
-//    // from those locations.
-//    val blockIds = data.partitions.indices.map(index => RDDBlockId(data.id, index)).toArray
-//    val blockId = blockIds(0)
-//    val blockManager = SparkEnv.get.blockManager
-//    val blockTransfer = blockManager.blockTransferService
-//    val serializerManager = SparkEnv.get.serializerManager
-//    blockManager.master.getLocations(blockId).foreach { cmId =>
-//      val bytes = blockTransfer.fetchBlockSync(cmId.host, cmId.port, cmId.executorId,
-//        blockId.toString)
-//      val deserialized = serializerManager.dataDeserializeStream(blockId,
-//        new ChunkedByteBuffer(bytes.nioByteBuffer()).toInputStream())(data.elementClassTag)
-//      assert(DataflowUtils.extractFromIterator(deserialized).toList === (1 to 100).toList)
-//    }
-//    // This will exercise the getRemoteBytes / getRemoteValues code paths:
-//    assert(blockIds.flatMap(id => blockManager.get[Int](id).get.data).toSet === (1 to 1000).toSet)
-//  }
-//  Seq(
-//    "caching" -> StorageLevel.MEMORY_ONLY,
-//    "caching on disk" -> StorageLevel.DISK_ONLY,
-//    "caching in memory, replicated" -> StorageLevel.MEMORY_ONLY_2,
-//    "caching in memory, serialized, replicated" -> StorageLevel.MEMORY_ONLY_SER_2,
-//    "caching on disk, replicated" -> StorageLevel.DISK_ONLY_2,
-//    "caching in memory and disk, replicated" -> StorageLevel.MEMORY_AND_DISK_2,
-//    "caching in memory and disk, serialized, replicated" -> StorageLevel.MEMORY_AND_DISK_SER_2
-//  ).foreach { case (testName, storageLevel) =>
-//    encryptionTest(testName) { conf =>
-//      testCaching(conf, storageLevel)
-//    }
-//  }
+  private def testCaching(conf: SparkConf, storageLevel: StorageLevel): Unit = {
+    sc = new SparkContext(conf.setMaster(clusterUrl).setAppName("test"))
+    TestUtils.waitUntilExecutorsUp(sc, 2, 30000)
+    val data = sc.parallelize(1 to 1000, 10)
+    val cachedData = data.persist(storageLevel)
+    assert(cachedData.count === 1000)
+    assert(sc.getExecutorStorageStatus.map(_.rddBlocksById(cachedData.id).size).sum ===
+      storageLevel.replication * data.getNumPartitions)
+    assert(cachedData.count === 1000)
+    assert(cachedData.count === 1000)
+
+    // Get all the locations of the first partition and try to fetch the partitions
+    // from those locations.
+    val blockIds = data.partitions.indices.map(index => RDDBlockId(data.id, index)).toArray
+    val blockId = blockIds(0)
+    val blockManager = SparkEnv.get.blockManager
+    val blockTransfer = blockManager.blockTransferService
+    val serializerManager = SparkEnv.get.serializerManager
+    blockManager.master.getLocations(blockId).foreach { cmId =>
+      val bytes = blockTransfer.fetchBlockSync(cmId.host, cmId.port, cmId.executorId,
+        blockId.toString, null)
+      val deserialized = serializerManager.dataDeserializeStream(blockId,
+        new ChunkedByteBuffer(bytes.nioByteBuffer()).toInputStream())(data.elementClassTag).toList
+      assert(deserialized === (1 to 100).toList)
+    }
+    // This will exercise the getRemoteBytes / getRemoteValues code paths:
+    assert(blockIds.flatMap(id => blockManager.get[Int](id).get.data).toSet === (1 to 1000).toSet)
+  }
+
+  Seq(
+    "caching" -> StorageLevel.MEMORY_ONLY,
+    "caching on disk" -> StorageLevel.DISK_ONLY,
+    "caching in memory, replicated" -> StorageLevel.MEMORY_ONLY_2,
+    "caching in memory, serialized, replicated" -> StorageLevel.MEMORY_ONLY_SER_2,
+    "caching on disk, replicated" -> StorageLevel.DISK_ONLY_2,
+    "caching in memory and disk, replicated" -> StorageLevel.MEMORY_AND_DISK_2,
+    "caching in memory and disk, serialized, replicated" -> StorageLevel.MEMORY_AND_DISK_SER_2
+  ).foreach { case (testName, storageLevel) =>
+    encryptionTest(testName) { conf =>
+      testCaching(conf, storageLevel)
+    }
+  }
 
   test("compute without caching when no partitions fit in memory") {
     val size = 10000
