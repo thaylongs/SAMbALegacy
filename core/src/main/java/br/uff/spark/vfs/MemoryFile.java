@@ -15,7 +15,7 @@ enum MemoryFileStatus {
 public class MemoryFile extends MemoryPath {
 
     protected MemoryFileStatus status = null;
-    protected FileHeap contents = new FileHeap();
+    protected FileHeap contents;
 
     protected MemoryFile(MemoryFS memoryFS, String name, MemoryDirectory parent) {
         super(memoryFS, name, parent);
@@ -44,13 +44,9 @@ public class MemoryFile extends MemoryPath {
     }
 
     protected int read(Pointer buffer, long size, long offset) {
-        int bytesToRead = (int) Math.min(contents.size - offset, size);
-        byte[] bytesRead = new byte[bytesToRead];
         synchronized (this) {
-            contents.read(offset, bytesRead, 0, bytesToRead);
-            buffer.put(0, bytesRead, 0, bytesToRead);
+            return contents.read(buffer, size, offset);
         }
-        return bytesToRead;
     }
 
     @Override
@@ -64,14 +60,12 @@ public class MemoryFile extends MemoryPath {
     }
 
     protected int write(Pointer buffer, long bufSize, long writeOffset) throws IOException {
-        byte[] bytesToWrite = new byte[(int) bufSize];
         synchronized (this) {
-            buffer.get(0, bytesToWrite, 0, (int) bufSize);
-            contents.write(writeOffset, bytesToWrite, 0, bytesToWrite.length);
+            contents.write(buffer, bufSize, writeOffset);
             if (status == MemoryFileStatus.ALREADY_EXIST)
                 status = MemoryFileStatus.MODIFIED;
+            return (int) bufSize;
         }
-        return (int) bufSize;
     }
 
     public void trim() {

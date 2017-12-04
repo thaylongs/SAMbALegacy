@@ -1,5 +1,8 @@
 package br.uff.spark.vfs;
 
+import jnr.ffi.Pointer;
+
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -8,7 +11,7 @@ import java.util.Arrays;
 /**
  * @author Thaylon Guedes Santos
  * @email thaylongs@gmail.com
- *
+ * <p>
  * Part of code of this class is copy/based from:
  * https://github.com/google/jimfs/blob/master/jimfs/src/main/java/com/google/common/jimfs/RegularFile.java
  * https://github.com/google/jimfs/blob/master/jimfs/src/main/java/com/google/common/jimfs/HeapDisk.java
@@ -107,6 +110,33 @@ public class FileHeap {
             }
         }
 
+        return bytesToRead;
+    }
+
+
+    public int read(Pointer buffer, long size, long offset) {
+        int bytesToRead = (int) bytesToRead(offset, size);
+        if (bytesToRead > 0) {
+            int remaining = bytesToRead;
+
+            int blockIndex = blockIndex(offset);
+            byte[] block = blocks[blockIndex];
+            int offsetInBlock = offsetInBlock(offset);
+            long off = 0;
+
+            int read = get(block, offsetInBlock, buffer, off, length(offsetInBlock, remaining));
+            remaining -= read;
+            off += read;
+
+            while (remaining > 0) {
+                int index = ++blockIndex;
+                block = blocks[index];
+                read = get(block, 0, buffer, off, length(remaining));
+                remaining -= read;
+                off += read;
+            }
+
+        }
         return bytesToRead;
     }
 
@@ -311,6 +341,41 @@ public class FileHeap {
         return len;
     }
 
+    public int write(Pointer buffer, long bufSize, long writeOffset) throws IOException {
+        prepareForWrite(writeOffset, bufSize);
+        if (bufSize == 0) {
+            return 0;
+        }
+
+        int remaining = (int) bufSize;
+        int blockIndex = blockIndex(writeOffset);
+        checkAndEnableBlockForWrite(blockIndex);
+
+        byte[] block = blocks[blockIndex];
+        int offInBlock = offsetInBlock(writeOffset);
+
+        int off = 0;//pointer buffer started in 0
+
+        int written = put(block, offInBlock, buffer, off, length(offInBlock, remaining));
+        remaining -= written;
+        off += written;
+
+        while (remaining > 0) {
+            int currentBlockIndex = ++blockIndex;
+            block = blocks[currentBlockIndex];
+            checkAndEnableBlockForWrite(currentBlockIndex);
+            written = put(block, 0, buffer, off, length(remaining));
+            remaining -= written;
+            off += written;
+        }
+
+        long endPos = writeOffset + bufSize;
+        if (endPos > size) {
+            size = endPos;
+        }
+        return (int) bufSize;
+    }
+
     /**
      * Puts the contents of the given byte buffer at the given offset in the given block.
      */
@@ -329,6 +394,11 @@ public class FileHeap {
         return len;
     }
 
+    private int get(byte[] block, int offsetInBlock, Pointer buffer, long offset, int length) {
+        buffer.put(offset, block, offsetInBlock, length);
+        return length;
+    }
+
     /**
      * Reads len bytes starting at the given offset in the given block into the given byte buffer.
      */
@@ -342,6 +412,14 @@ public class FileHeap {
      */
     private static int put(byte[] block, int offset, byte[] b, int off, int len) {
         System.arraycopy(b, off, block, offset, len);
+        return len;
+    }
+
+    /**
+     * Puts the given slice of the given pointer at the given offset in the given block.
+     */
+    private static int put(byte[] block, int offset, Pointer buffer, int off, int len) {
+        buffer.get(off, block, offset, len);
         return len;
     }
 
@@ -416,4 +494,5 @@ public class FileHeap {
         result.changed = new boolean[blocks.length];
         return result;
     }
+
 }
