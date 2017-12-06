@@ -19,7 +19,7 @@ object DataflowUtils {
     override def hasNext: Boolean = original.hasNext
 
     override def next(): DataElement[(K, C)] = {
-      var next = original.next()
+      val next = original.next()
       next._2.asInstanceOf[DataElement[(K, C)]]
     }
   }
@@ -28,7 +28,7 @@ object DataflowUtils {
     override def hasNext: Boolean = original.hasNext
 
     override def next(): DataElement[(K, V)] = {
-      var next = original.next()
+      val next = original.next()
       next._2.asInstanceOf[DataElement[(K, V)]]
     }
   }

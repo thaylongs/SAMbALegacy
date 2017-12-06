@@ -71,7 +71,7 @@ private[spark] class FilterMapPartitionsRDD[T: ClassTag](
       * @return an iterator which produces those values of this iterator which satisfy the predicate `p`.
       * @note Reuse: $consumesAndProducesIterator
       *
-      * copied by thaylon from: scala.collection.Iterator def filter(p: A => Boolean): Iterator[A]
+      * copied by Thaylon from: scala.collection.Iterator def filter(p: A => Boolean): Iterator[A]
       **/
     new AbstractIterator[DataElement[T]] {
       // TODO 2.12 - Make a full-fledged FilterImpl that will reverse sense of p
@@ -85,7 +85,7 @@ private[spark] class FilterMapPartitionsRDD[T: ClassTag](
           hd = input.next()
           found = ff(hd)
           if (!found) {
-            defaultNotPassValue.addDepencencie(hd)
+            defaultNotPassValue.addDependency(hd)
           }
         } while (!found)
         hdDefined = true

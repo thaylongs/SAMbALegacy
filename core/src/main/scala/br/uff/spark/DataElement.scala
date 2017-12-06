@@ -2,14 +2,15 @@ package br.uff.spark
 
 import java.io.Serializable
 import java.util
-import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
+import java.util.{Random, UUID}
 
-import scala.collection.JavaConverters._
+import com.fasterxml.uuid.Generators
+
 import scala.beans.BeanProperty
-import scala.collection.mutable
+import scala.collection.JavaConverters._
 
 object DataElement {
-
 
   def dummy[T](element: T): DataElement[T] = {
     val result = new DataElement[T](element, null, true)
@@ -32,13 +33,11 @@ object DataElement {
 
   def of[T](element: T, task: Task, ignore: Boolean, dependencies: DataElement[_ <: Any]*): DataElement[T] = {
     val result = new DataElement(element, task, ignore)
-    for (dependencie <- dependencies) {
-      if (dependencie.ignore) {
-        for (dependencieID <- dependencie.dependenciesIDS) {
-          result.dependenciesIDS += dependencieID
-        }
+    for (dependency <- dependencies) {
+      if (dependency.ignore) {
+        result.dependenciesIDS.addAll(dependency.dependenciesIDS)
       } else {
-        result.dependenciesIDS += dependencie.id
+        result.dependenciesIDS.add(dependency.id)
       }
     }
     if (!ignore)
@@ -46,9 +45,9 @@ object DataElement {
     result
   }
 
-  def of[T](element: T, task: Task, ignore: Boolean, dependencies: mutable.MutableList[UUID]): DataElement[T] = {
+  def of[T](element: T, task: Task, ignore: Boolean, dependencies: java.util.ArrayList[UUID]): DataElement[T] = {
     val result = new DataElement(element, task, ignore)
-    result.dependenciesIDS ++= dependencies
+    result.dependenciesIDS.addAll(dependencies)
     if (!ignore)
       result.persist
     result
@@ -61,68 +60,69 @@ object DataElement {
       }
     }
 
-    for (dependencie <- dependencies) {
-      if (dependencie.ignore) {
-        for (dependencieID <- dependencie.dependenciesIDS) {
-          result.dependenciesIDS += dependencieID
-        }
+    for (dependency <- dependencies) {
+      if (dependency.ignore) {
+        result.dependenciesIDS.addAll(dependency.dependenciesIDS)
       } else {
-        result.dependenciesIDS += dependencie.id
+        result.dependenciesIDS.add(dependency.id)
       }
     }
+
     if (!ignore)
       result.persist
     result
   }
+
+  var UUID_Gen = Generators.randomBasedGenerator(new Random(512))
 
 }
 
 class DataElement[T](var value: T, var task: Task, var ignore: Boolean = false) extends Serializable {
 
   @BeanProperty
-  var id: UUID = UUID.randomUUID()
+  var id: UUID =
+    if (ignore) null
+    else DataElement.UUID_Gen.generate()
 
-  var dependenciesIDS = new mutable.MutableList[UUID]()
+  var dependenciesIDS: java.util.List[UUID] = new java.util.ArrayList[UUID]()
 
   def persist: DataElement[T] = {
     DataflowProvenance.getInstance.add(this)
     this
   }
 
-  def addDepencencie(dataElementsIDs: Iterator[UUID]): DataElement[T] = {
-    for (elem <- dataElementsIDs) {
-      this.dependenciesIDS += elem
-      if (!ignore)
-        DataflowProvenance.getInstance.informNewDependency(this, elem)
+  def addDependencies(dataElementsIDs: java.util.List[UUID]): DataElement[T] = {
+    this.dependenciesIDS.addAll(dataElementsIDs)
+    if (!ignore) {
+      DataflowProvenance.getInstance.informNewDependencies(this, dataElementsIDs)
     }
     return this
   }
 
-  def addDepencencie(dependencie: DataElement[_ <: Any]): DataElement[T] = synchronized {
-    if (dependencie == null)
-      throw new NullPointerException("Error: the dependencies are null")
-    if (dependencie.ignore) {
-      for (dependencieID <- dependencie.dependenciesIDS) {
-        this.dependenciesIDS += dependencieID
-        if (!ignore)
-          DataflowProvenance.getInstance.informNewDependency(this, dependencieID)
+  def addDependency(dependency: DataElement[_ <: Any]): DataElement[T] = {
+    if (dependency == null)
+      throw new NullPointerException("Error: the dependency is null")
+    if (dependency.ignore) {
+      this.dependenciesIDS.addAll(dependency.dependenciesIDS)
+      if (!ignore) {
+        DataflowProvenance.getInstance.informNewDependencies(this, dependency.dependenciesIDS)
       }
     } else {
-      this.dependenciesIDS += dependencie.id
+      this.dependenciesIDS.add(dependency.id)
       if (!ignore)
-        DataflowProvenance.getInstance.informNewDependency(this, dependencie.id)
+        DataflowProvenance.getInstance.informNewDependency(this, dependency.id)
     }
     return this
   }
 
-  def addDepencencie(dependencies: mutable.MutableList[UUID]): DataElement[T] = synchronized {
+  def setDependencies(dependencies: java.util.List[UUID]): DataElement[T] = {
     if (dependencies == null)
       throw new NullPointerException("Error: the dependencies are null")
     if (this.ignore) {
       throw new Exception("This method can't be called when it needs to be ignored")
     }
     this.dependenciesIDS = dependencies
-    DataflowProvenance.getInstance.insertDependencies(this)
+    DataflowProvenance.getInstance.setDependencies(this)
     return this
   }
 

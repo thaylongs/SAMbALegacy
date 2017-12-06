@@ -453,9 +453,9 @@ class ExternalAppendOnlyMap[K, V, C](
       if (dependenciesList.size == 1) {
         minPair
       } else {
-        var dependenciesListUUID = new mutable.MutableList[UUID]()
+        val dependenciesListUUID = new java.util.ArrayList[UUID]()
         for (elem <- dependenciesList) {
-          dependenciesListUUID ++= elem.dependenciesIDS
+          dependenciesListUUID.addAll(elem.dependenciesIDS)
           elem.deleteIt()
         }
         val result = DataElement.of((minKey, minCombiner), taskOfRDD, taskOfRDD.isIgnored, dependenciesListUUID)

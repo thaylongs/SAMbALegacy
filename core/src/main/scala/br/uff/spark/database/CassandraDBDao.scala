@@ -2,7 +2,9 @@ package br.uff.spark.database
 
 import java.sql.Timestamp
 import java.time.{ZoneId, ZonedDateTime}
+import java.util
 import java.util.UUID
+import java.util.function.Consumer
 
 import br.uff.spark._
 
@@ -10,6 +12,7 @@ import scala.collection.JavaConverters._
 
 class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
 
+  val log = org.apache.log4j.Logger.getLogger(this.getClass)
   val con = DataSource.getConnection
 
   private val STMT_INSERT_TASK = con.prepare(
@@ -55,7 +58,12 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
 
 
   override def close(): Unit = {
-    DataSource.close()
+    try {
+      DataSource.close()
+    } catch {
+      case ex: Exception =>
+        log.error("Error on try close the connection if database")
+    }
   }
 
   val STMT_UPDATE_EXECUTION = con.prepare(
@@ -112,7 +120,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
     )
 
     if (!dataElement.dependenciesIDS.isEmpty)
-      insertDependencies(dataElement)
+      setDependencies(dataElement)
   }
 
   val STMT_INSERT_DEPENDENCIES_OF_DATA_ELEMENT = con.prepare(
@@ -123,10 +131,10 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
       |            (?, ?, ?, ?);
     """.stripMargin)
 
-  override def insertDependencies(dataElement: DataElement[_ <: Any]): Unit = {
+  override def setDependencies(dataElement: DataElement[_ <: Any]): Unit = {
     con.executeAsync(
       STMT_INSERT_DEPENDENCIES_OF_DATA_ELEMENT.bind(
-        dataElement.dependenciesIDS.toSet.asJava,
+        new util.HashSet[UUID](dataElement.dependenciesIDS),
         dataElement.id,
         dataElement.task.id,
         execution.ID
@@ -152,6 +160,12 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
         execution.ID
       )
     )
+  }
+
+  override def insertDependenciesOfDataElement(dataElement: DataElement[_], ids: util.List[UUID]): Unit = {
+    ids.forEach(new Consumer[UUID] {
+      override def accept(id: UUID): Unit = insertDependencyOfDataElement(dataElement, id)
+    })
   }
 
   val STMT_INSERT_TRANSFORMATION_GROUP = con.prepare(
@@ -186,7 +200,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
       |     id=?;
     """.stripMargin)
 
-  override def updateDataElement(dataElement: DataElement[_ <: Any]): Unit = {
+  override def updateValueOfDataElement(dataElement: DataElement[_ <: Any]): Unit = {
     con.executeAsync(
       STMT_UPDATE_DATA_ELEMENT.bind(
         dataElement.applySchemaToTheValue(),

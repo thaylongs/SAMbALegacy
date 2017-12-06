@@ -19,14 +19,16 @@ trait DataBaseBasicMethods {
 
   def insertDataElement(dataElement: DataElement[_ <: Any]): Unit = {}
 
-  def insertDependencies(dataElement: DataElement[_ <: Any]): Unit = {}
+  def setDependencies(dataElement: DataElement[_ <: Any]): Unit = {}
 
   def insertDependencyOfDataElement(dataElement: DataElement[_ <: Any], id: UUID): Unit = {}
+
+  def insertDependenciesOfDataElement(dataElement: DataElement[_ <: Any], ids: java.util.List[UUID]): Unit = {}
 
   /* Update operations*/
   def updateExecution(execution: Execution): Unit = {}
 
-  def updateDataElement(dataElement: DataElement[_ <: Any]): Unit = {}
+  def updateValueOfDataElement(dataElement: DataElement[_ <: Any]): Unit = {}
 
   /* Delete Operations*/
   def deleteDataElement(dataElement: DataElement[_ <: Any]): Unit = {}

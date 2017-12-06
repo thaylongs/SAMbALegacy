@@ -463,9 +463,9 @@ private[spark] class ExternalSorter[K, V, C](
               if(next._2.dependeneciesList.size ==1){
                 next._2.dependeneciesList.head.asInstanceOf[DataElement[Product2[K, C]]]
               }else{
-                val dependenciesIDsList = new mutable.MutableList[UUID]
+                val dependenciesIDsList = new java.util.ArrayList[UUID]
                 for (elem <- next._2.dependeneciesList) {
-                  dependenciesIDsList ++= elem.dependenciesIDS
+                  dependenciesIDsList.addAll(elem.dependenciesIDS)
                   elem.deleteIt()
                 }
                 DataElement.of((next._1, next._2.value), taskOfRDD, taskOfRDD.isIgnored, dependenciesIDsList)
@@ -486,7 +486,7 @@ private[spark] class ExternalSorter[K, V, C](
             throw new NoSuchElementException
           }
 
-          val dependenciesList = new mutable.MutableList[DataElement[_ <: Any]]
+          val dependenciesList = new mutable.ArrayBuffer[DataElement[_ <: Any]]
 
           val elem = sorted.next()
           dependenciesList += elem
@@ -500,9 +500,9 @@ private[spark] class ExternalSorter[K, V, C](
           if (dependenciesList.size == 0) {
             return elem
           } else {
-            val dependenciesIDsList = new mutable.MutableList[UUID]
+            val dependenciesIDsList = new java.util.ArrayList[UUID]
             for (elem <- dependenciesList) {
-              dependenciesIDsList ++= elem.dependenciesIDS
+              dependenciesIDsList.addAll(elem.dependenciesIDS)
               elem.deleteIt()
             }
             DataElement.of((k, c), taskOfRDD, taskOfRDD.isIgnored, dependenciesIDsList)

@@ -141,9 +141,9 @@ class AppendOnlyMap[K, V](taskOfRDD:Task, initialCapacity: Int = 64)
         val newValue = updateFunc(haveNullValue, nullValue.value._2)
         nullValue.updateValue((realKey, newValue)) // Possivel gerador de lixo  UFF
         if (alreadyExistsDataelement == null) {
-          nullValue.addDepencencie(dataElement)
+          nullValue.addDependency(dataElement)
         } else {
-          nullValue.addDepencencie(alreadyExistsDataelement.dependenciesIDS.iterator)
+          nullValue.addDependencies(alreadyExistsDataelement.dependenciesIDS)
           alreadyExistsDataelement.deleteIt()
         }
       }
@@ -168,9 +168,9 @@ class AppendOnlyMap[K, V](taskOfRDD:Task, initialCapacity: Int = 64)
         val newValue = updateFunc(true, entry.value._2)
         entry.updateValue((realKey, newValue)) // Possivel gerador de lixo  UFF
         if (alreadyExistsDataelement == null) {
-          entry.addDepencencie(dataElement)
+          entry.addDependency(dataElement)
         } else {
-          entry.addDepencencie(alreadyExistsDataelement.dependenciesIDS.iterator)
+          entry.addDependencies(alreadyExistsDataelement.dependenciesIDS)
           alreadyExistsDataelement.deleteIt()
         }
         return newValue

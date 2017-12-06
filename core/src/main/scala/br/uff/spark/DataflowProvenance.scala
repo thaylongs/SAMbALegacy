@@ -7,8 +7,6 @@ import java.util.UUID
 import br.uff.spark.database.{CassandraDBDao, DataBaseBasicMethods, TestDBDao}
 import org.apache.spark.SparkContext
 
-import scala.collection.mutable
-
 object DataflowProvenance {
 
   private val instance = new DataflowProvenance
@@ -20,7 +18,6 @@ class DataflowProvenance private() {
 
   var dao: DataBaseBasicMethods = null
   var execution: Execution = null
-  private val rdds = new mutable.HashMap[String, DataElement[_ <: Any]]()
   var dummyNode = true
 
   def init(sparkContext: SparkContext): UUID = {
@@ -52,8 +49,8 @@ class DataflowProvenance private() {
   }
 
 
-  def insertDependencies(dataElement: DataElement[_ <: Any]): Unit = {
-    dao.insertDependencies(dataElement)
+  def setDependencies(dataElement: DataElement[_ <: Any]): Unit = {
+    dao.setDependencies(dataElement)
   }
 
   def add(group: TransformationGroup): Unit = {
@@ -65,20 +62,24 @@ class DataflowProvenance private() {
     dao.insertTask(task)
   }
 
-  def add(dataElement: DataElement[_]): Unit = synchronized {
+  def add(dataElement: DataElement[_]): Unit = {
     dao.insertDataElement(dataElement)
   }
 
-  def update(dataElement: DataElement[_]): Unit = synchronized {
-    dao.updateDataElement(dataElement)
+  def update(dataElement: DataElement[_]): Unit = {
+    dao.updateValueOfDataElement(dataElement)
   }
 
-  def delete(dataElement: DataElement[_]): Unit = synchronized {
+  def delete(dataElement: DataElement[_]): Unit = {
     dao.deleteDataElement(dataElement)
   }
 
   def informNewDependency(dataElement: DataElement[_ <: Any], id: UUID): Unit = {
     dao.insertDependencyOfDataElement(dataElement, id)
+  }
+
+  def informNewDependencies(dataElement: DataElement[_ <: Any], ids: java.util.List[UUID]): Unit = {
+    dao.insertDependenciesOfDataElement(dataElement, ids)
   }
 
   def finish(): Unit = {

@@ -205,13 +205,17 @@ private[spark] class PipedRDD[T: ClassTag](
         new Thread(s"Saving dependencies of pipe process: $command") {
           override def run() = {
             DataSource.upCount()
-            val dependenciesIDS = new mutable.MutableList[UUID]()
+            val dependenciesIDS = new java.util.ArrayList[UUID]()
             try {
               for (usedElements <- allUsedElements.asScala) {
-                dependenciesIDS += usedElements.id
+                if (usedElements.ignore) {
+                  dependenciesIDS.addAll(usedElements.dependenciesIDS)
+                } else {
+                  dependenciesIDS.add(usedElements.id)
+                }
               }
               for (createdElements <- allCreatedElements.asScala) {
-                createdElements.addDepencencie(dependenciesIDS)
+                createdElements.setDependencies(dependenciesIDS)
               }
             } catch {
               case e: Exception => e.printStackTrace()
