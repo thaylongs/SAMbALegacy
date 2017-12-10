@@ -192,9 +192,6 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       userClassPath: Seq[URL],
       executionID:UUID) {
 
-    /* Starting connection with database */
-    DataflowProvenance.getInstance.init(executionID)
-
     Utils.initDaemon(log)
 
     SparkHadoopUtil.get.runAsSparkUser { () =>
@@ -225,6 +222,19 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
           driverConf.set(key, value)
         }
       }
+
+      VersionControl.checkIsEnable(driverConf)
+      DataflowProvenance.checkIsEnable(driverConf)
+
+      if(VersionControl.isEnable){
+        val appName  =  driverConf.get("spark.app.name")
+        val masterProp  =  driverConf.get("spark.master")
+        VersionControl.getInstance.cloneRepository(executionID, appName, masterProp, hostname, executorId)
+      }
+     
+      /* Starting connection with database */
+      DataflowProvenance.getInstance.init(executionID)
+
       if (driverConf.contains("spark.yarn.credentials.file")) {
         logInfo("Will periodically update credentials from: " +
           driverConf.get("spark.yarn.credentials.file"))
@@ -317,7 +327,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       |   --cores <cores>
       |   --app-id <appid>
       |   --worker-url <workerUrl>
-      |   --execution-id <dfAnalyzerExecutionID>
+      |   --execution-id <SciSpark ExecutionID>
       |   --user-class-path <url>
       |""".stripMargin)
     // scalastyle:on println

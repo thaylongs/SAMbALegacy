@@ -266,6 +266,13 @@ if [ -d "$SPARK_HOME/R/lib/SparkR" ]; then
   cp "$SPARK_HOME/R/lib/sparkr.zip" "$DISTDIR/R/lib"
 fi
 
+#Copy the Gitblit Server
+tar -xf "$SPARK_HOME/Third Party/gitblit-1.8.0.tar.gz" -C "$DISTDIR"
+mv "$DISTDIR/gitblit-1.8.0" "$DISTDIR/gitblit"
+cp "$SPARK_HOME/Third Party/MergeMachineBranch.groovy" "$DISTDIR/gitblit/data/groovy"
+echo "groovy.postReceiveScripts = MergeMachineBranch.groovy" >> "$DISTDIR/gitblit/data/gitblit.properties"
+
+#Make the  dist package
 if [ "$MAKE_TGZ" == "true" ]; then
   TARDIR_NAME=spark-$VERSION-bin-$NAME
   TARDIR="$SPARK_HOME/$TARDIR_NAME"

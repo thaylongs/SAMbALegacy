@@ -20,6 +20,7 @@ package org.apache.spark.deploy.worker
 import java.io._
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 import com.google.common.io.Files
 import org.apache.spark.deploy.DeployMessages.ExecutorStateChanged
@@ -81,17 +82,25 @@ private[deploy] class ExecutorRunner(
       if (state == ExecutorState.RUNNING) {
         state = ExecutorState.FAILED
       }
-      killProcess(Some("Worker shutting down")) }
+      killProcess(Some("Worker shutting down"), false) }
   }
 
   /**
    * Kill executor process, wait for exit and notify worker to update resource status.
    *
    * @param message the exception message which caused the executor's death
+   * @param needWait if need give more time to the process
    */
-  private def killProcess(message: Option[String]) {
+  private def killProcess(message: Option[String], needWait: Boolean) {
     var exitCode: Option[Int] = None
     if (process != null) {
+      if(needWait){
+        val exited = process.waitFor(2, TimeUnit.HOURS) // TODO improve it to user chooser the time
+        if(!exited){
+          logError("The Runner process not finished yet, so may be need pass more time to the process finish the provenance jobs!!.")
+        }
+      }
+
       logInfo("Killing process!")
       if (stdoutAppender != null) {
         stdoutAppender.stop()
@@ -188,11 +197,11 @@ private[deploy] class ExecutorRunner(
       case interrupted: InterruptedException =>
         logInfo("Runner thread for executor " + fullId + " interrupted")
         state = ExecutorState.KILLED
-        killProcess(None)
+        killProcess(None, true)
       case e: Exception =>
         logError("Error running executor", e)
         state = ExecutorState.FAILED
-        killProcess(Some(e.toString))
+        killProcess(Some(e.toString), false)
     }
   }
 }

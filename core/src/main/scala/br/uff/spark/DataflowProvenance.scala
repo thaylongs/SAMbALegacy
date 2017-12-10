@@ -5,13 +5,19 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 import br.uff.spark.database.{CassandraDBDao, DataBaseBasicMethods, TestDBDao}
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkConf, SparkContext}
 
 object DataflowProvenance {
 
   private val instance = new DataflowProvenance
 
   def getInstance: DataflowProvenance = instance
+
+  var isEnable = true
+
+  def checkIsEnable(conf: SparkConf): Unit = {
+    isEnable = conf.get("spark.sciSpark.enableProvenance").toBoolean
+  }
 }
 
 class DataflowProvenance private() {
@@ -22,7 +28,7 @@ class DataflowProvenance private() {
 
   def init(sparkContext: SparkContext): UUID = {
     execution = new Execution(sparkContext.appName)
-    if (System.getenv("DISABLE_PROVENANCE") == null) {
+    if (DataflowProvenance.isEnable) {
       dao = new CassandraDBDao(execution)
       dao.init()
       dummyNode = false
@@ -33,7 +39,7 @@ class DataflowProvenance private() {
   def init(executionID: UUID) = {
     execution = new Execution(null)
     execution.ID = executionID
-    if (System.getenv("DISABLE_PROVENANCE") == null) {
+    if (DataflowProvenance.isEnable) {
       dao = new CassandraDBDao(execution)
     }
   }
@@ -87,7 +93,7 @@ class DataflowProvenance private() {
       execution.endTime = LocalDateTime.now()
       dao.updateExecution(execution)
     }
-    if (System.getenv("DISABLE_PROVENANCE") == null) {
+    if (DataflowProvenance.isEnable) {
       dao.close()
     }
   }

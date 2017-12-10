@@ -16,7 +16,7 @@ import scala.collection.JavaConverters._
 class FileGroupRDDFunctions(self: RDD[FileGroup]) extends Logging with Serializable {
 
   def runScientificApplication(command: String): RDD[FileGroup] = self.withScope {
-    val path = self.conf.get("INTERNAL_SCRIPT_DIR") + command
+    val path = self.conf.get("spark.sciSpark.internalScriptDir") + command
     runCommand { (extraInfo: Map[String, Any], MetaInfo: Seq[FileElement]) =>
       val template = JtwigTemplate.inlineTemplate(path)
       val model = JtwigModel.newModel(extraInfo.asJava.asInstanceOf[java.util.Map[String, AnyRef]])
@@ -72,15 +72,17 @@ class FileGroupRDDFunctions(self: RDD[FileGroup]) extends Logging with Serializa
 
   def saveFilesAt(_file: File): Unit = self.withScope {
     val file = _file.getAbsoluteFile
-    self.foreach { t =>
-      t.saveFilesAt(new File(file, UUID.randomUUID().toString))
+    self.foreachWithDataElement { t =>
+      val id = if (t.id != null) t.id else UUID.randomUUID()
+      t.value.saveFilesAt(new File(file, id.toString))
     }
   }
 
   def saveFilesAtAsync(_file: File): FutureAction[Unit] = self.withScope {
     val file = _file.getAbsoluteFile
-    self.foreachAsync { (t: FileGroup) =>
-      t.saveFilesAt(new File(file, UUID.randomUUID().toString))
+    self.foreachAsyncWithDataElement { t =>
+      val id = if (t.id != null) t.id else UUID.randomUUID()
+      t.value.saveFilesAt(new File(file, id.toString))
     }
   }
 

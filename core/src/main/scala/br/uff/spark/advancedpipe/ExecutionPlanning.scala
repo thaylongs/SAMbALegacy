@@ -13,7 +13,7 @@ class ExecutionPlanning(
   extends Logging with Serializable {
 
   var onReadLine: (String) => Unit = line => logInfo(line)
-  var onReadErrorLine: (String) => Unit = errorLine => logError(errorLine)
+  var onReadErrorLine: (String) => Unit = errorLine => logError("Error stream line: " + errorLine)
 
   var filterFilesForGeneratedRDD: (FileElement) => Boolean = (_) => true
   var getExtrasInfoForGeneratedRDD: () => Map[String, AnyRef] = null

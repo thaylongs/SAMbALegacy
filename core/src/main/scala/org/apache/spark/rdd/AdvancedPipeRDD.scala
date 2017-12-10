@@ -106,7 +106,8 @@ private[spark] class AdvancedPipeRDD(
       memoryFS.toFileElementList(executionPlan.filterFilesForGeneratedRDD.apply(_))
     } catch {
       case t: Throwable => {
-        Thread.sleep(100000)
+        log.info(s"There is a problem in the execution of command: ${executionPlan.command.mkString(" ")}, the folder ${taskDirectory} is enable for search for 60 seconds.")
+        Thread.sleep(60000)
         throw t
       }
     } finally {

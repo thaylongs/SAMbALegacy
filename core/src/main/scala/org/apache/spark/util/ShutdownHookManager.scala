@@ -216,3 +216,10 @@ private class SparkShutdownHook(private val priority: Int, hook: () => Unit)
   def run(): Unit = hook()
 
 }
+
+
+object ShutdownHookManagerBridge {
+  def registerShutdownDeleteDir(file: File): Unit = {
+    ShutdownHookManager.registerShutdownDeleteDir(file)
+  }
+}

@@ -1048,6 +1048,11 @@ abstract class RDD[T: ClassTag](
     sc.runJob(this, (iter: Iterator[DataElement[T]]) => DataflowUtils.extractFromIterator(iter).foreach(cleanF))
   }
 
+  def foreachWithDataElement(f: DataElement[T] => Unit): Unit = withScope {
+    val cleanF = sc.clean(f)
+    sc.runJob(this, (iter: Iterator[DataElement[T]]) => iter.foreach(cleanF))
+  }
+
   /**
    * Applies a function f to each partition of this RDD.
    */

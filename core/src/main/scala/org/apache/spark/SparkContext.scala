@@ -376,8 +376,13 @@ class SparkContext(config: SparkConf) extends Logging {
     // log out spark.app.name in the Spark driver logs
     logInfo(s"Submitted application: $appName")
 
+    DataflowProvenance.checkIsEnable(_conf)
+    VersionControl.checkIsEnable(_conf)
+
     /* Starting connection with database */
     executionID = DataflowProvenance.getInstance.init(this)
+
+    /* Starting  Version Control */
     if (VersionControl.isEnable) {
       VersionControl.getInstance.initAll(this)
     }
@@ -1319,13 +1324,6 @@ class SparkContext(config: SparkConf) extends Logging {
   }
 
   /* Spark - UFF */
-
-  def setScriptDir(dir: String): Unit = {
-    var _dir = dir.trim
-    if (!_dir.endsWith("/"))
-      _dir += "/"
-    conf.set("INTERNAL_SCRIPT_DIR", _dir)
-  }
 
   def fileGroup(fileGroupTemplate: FileGroupTemplate*): RDD[FileGroup] = withScope {
     val allFileGroups = fileGroupTemplate

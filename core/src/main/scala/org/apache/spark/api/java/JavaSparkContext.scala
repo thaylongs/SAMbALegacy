@@ -509,10 +509,6 @@ class JavaSparkContext(val sc: SparkContext)
   }
 
   /* Spark - UFF */
-  def setScriptDir(dir: String) {
-    sc.setScriptDir(dir)
-  }
-
   def fileGroup(fileGroupTemplate: java.util.List[FileGroupTemplate]): JavaRDD[FileGroup] = {
     sc.fileGroup(fileGroupTemplate.asScala: _*)
   }

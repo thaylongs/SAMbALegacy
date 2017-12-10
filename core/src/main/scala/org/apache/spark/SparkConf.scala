@@ -574,6 +574,50 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
     getAll.sorted.map{case (k, v) => k + "=" + v}.mkString("\n")
   }
 
+  /*SciSpark*/
+
+  def enableProvence(): SparkConf = {
+    set("spark.sciSpark.enableProvenance", "true")
+  }
+
+  def disableProvence(): SparkConf = {
+    set("spark.sciSpark.enableProvenance", "false")
+  }
+
+  def enableVersionControl(): SparkConf = {
+    set("spark.sciSpark.versionControl", "true")
+  }
+
+  def disableVersionControl(): SparkConf = {
+    set("spark.sciSpark.versionControl", "false")
+  }
+
+  def setScriptDir(dir: String): SparkConf = {
+    var _dir = dir.trim
+    if (!_dir.endsWith("/")) _dir += "/"
+    set("spark.sciSpark.internalScriptDir", _dir)
+  }
+
+  /*Loading default values*/
+
+  def loadDefaultSciSparkValues(): Unit ={
+    enableProvence()
+    enableVersionControl()
+
+    val ENABLE_PROVENANCE = System.getenv("ENABLE_PROVENANCE")
+    if(ENABLE_PROVENANCE!=null && ENABLE_PROVENANCE.toBoolean == false){
+      disableProvence()
+    }
+    val ENABLE_VCS = System.getenv("ENABLE_VCS")
+    if(ENABLE_VCS!=null && ENABLE_VCS.toBoolean == false){
+      disableVersionControl()
+    }
+  }
+
+  loadDefaultSciSparkValues()
+
+  /* SciSpark */
+
 }
 
 private[spark] object SparkConf extends Logging {
