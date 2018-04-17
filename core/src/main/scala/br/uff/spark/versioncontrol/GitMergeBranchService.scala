@@ -16,6 +16,8 @@ import org.eclipse.jgit.revwalk.RevWalk
   * This service will handle the git post-update hook event. The hook will notify this service when a
   * machine-executor make a push with new data, then this service will make the merge of the machine
   * branch into your parent branch.
+  *
+  * @author Thaylon Guedes Santos
   */
 
 class GitMergeBranchService extends Thread {
@@ -43,7 +45,6 @@ class GitMergeBranchService extends Thread {
     })
   }
 
-  //Eu
   def processMerge(msg: String): Unit = {
 
     val data = msg.split(";")
@@ -97,10 +98,6 @@ class GitMergeBranchService extends Thread {
         log.error("Error", e)
       }
     }
-
-    println(data)
-
-
   }
 
 }

@@ -6,6 +6,7 @@ import br.uff.spark.advancedpipe.{ExecutionPlanning, FileElement, FileGroup}
 import br.uff.spark.versioncontrol.VersionControl
 import br.uff.spark.vfs.MemoryFS
 import br.uff.spark.{DataElement, TransformationType}
+import br.uff.spark.schema.{DataElementSchema, SingleLineSchema}
 import com.google.common.io.Files
 import org.apache.spark.{Partition, TaskContext}
 
@@ -22,6 +23,7 @@ private[spark] class AdvancedPipeRDD(
   extends RDD[FileGroup](prev) {
 
   setTransformationType(TransformationType.MAP)
+  task.hasDataInRepository = true
 
   var executionPlan: ExecutionPlanning = null
 
@@ -64,7 +66,7 @@ private[spark] class AdvancedPipeRDD(
 
         //If Enable, this will commit the changes in the repository
         if (VersionControl.isEnable) {
-          VersionControl.getInstance.writeFileGroup(task, result)
+          VersionControl.getInstance.writeFileGroup(task, result, dataElement.id)
         }
 
         dataElement
@@ -116,7 +118,6 @@ private[spark] class AdvancedPipeRDD(
         taskDirectory.deleteOnExit()
       }
     }
-
   }
 
   //TODO Throw the possible exception

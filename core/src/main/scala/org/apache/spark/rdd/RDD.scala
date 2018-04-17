@@ -22,6 +22,8 @@ import java.util.{Random, UUID}
 import br.uff.spark.TransformationType.TransformationType
 import br.uff.spark._
 import br.uff.spark.advancedpipe.FileGroup
+import br.uff.spark.schema._
+import br.uff.spark.versioncontrol.VersionControl
 
 import scala.collection.{AbstractIterator, Map, mutable}
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
@@ -171,10 +173,55 @@ abstract class RDD[T: ClassTag](
   if (deps != null && !deps.isEmpty)
     loadDependenciesOfTask(deps.map(a => a.rdd): _*)
 
-  def checkAndPersistProvenance(): RDD[T] = {
+  private[spark] def checkAndPersistProvenance(): RDD[T] = {
+    if (task.schema == null) {
+      if (DefaultPairSchema.checkIfAInstanceOf(elementClassTagDE)) {
+        setSchema(new DefaultPairSchema[T])
+      } else if (DefaultArraySchema.checkIfAInstanceOf(elementClassTagDE)) {
+        setSchema(new DefaultArraySchema[T]())
+      } else if (DefaultFileGroupSchema.checkIfAInstanceOf(elementClassTagDE)) {
+        setSchema(new DefaultFileGroupSchema[T])
+      } else {
+        setSchema(DataElement.defaultSchema.asInstanceOf[DefaultSchema[T]])
+      }
+      task.usingDefaultSchema = true
+    }
     task.checkAndPersist()
     if (task.isIgnored && transformationGroupManager.currentTransformationGroup != null) {
       transformationGroupManager.currentTransformationGroup.intermediaryTasksIDS.remove(task)
+    }
+    this
+  }
+
+  /**
+    * Call this method when you want to persist the FileGroup that is handled by
+    * this RDD in the git repository. This method works only with RDD [FileGroup] and RDD [(SomeType, FileGroup)].
+    * Note 1: When you call a specific function for RDD [FileGroup], like "runScientificApplication" or "runCommand"
+    * their produced FileGroup are automatically saved in the Git Repository.
+    * Note 2: If you want ignore this RDD, please DO IT before call this method.
+    */
+  def persistFileGroupInGit(): RDD[T] = {
+    //TODO - Improve the performance when this RDD is a Filter RDD with Symbolic link
+    if (this.isInstanceOf[AdvancedPipeRDD]) {
+      logWarning(s"This RDD, of Task ID: ${task.id}, is by default is marked to save the FileGroup in Git Repository!")
+    } else {
+      if (elementClassTagDE.runtimeClass == classOf[FileGroup]) {
+        return this.asInstanceOf[RDD[FileGroup]].mapPartitionsWithTaskInfo { (iter, task) =>
+          iter.map { fileGroup =>
+            VersionControl.getInstance.writeFileGroup(fileGroup.task, fileGroup.value, fileGroup.id)
+            DataElement.of(fileGroup.value, task, task.isIgnored, fileGroup)
+          }
+        }.ignoreIt().asInstanceOf[RDD[T]]
+      } else if (elementClassTagDE.runtimeClass == classOf[(Any, FileGroup)] ||
+        elementClassTagDE.runtimeClass == classOf[Product2[Any, FileGroup]]) {
+        return this.asInstanceOf[RDD[Product2[Any, FileGroup]]].mapPartitionsWithTaskInfo { (iter, task) =>
+          iter.map { fileGroup =>
+            VersionControl.getInstance.writeFileGroup(fileGroup.task, fileGroup.value._2, fileGroup.id)
+            DataElement.of(fileGroup.value, task, task.isIgnored, fileGroup)
+          }
+        }.ignoreIt().asInstanceOf[RDD[T]]
+      }
+      task.hasDataInRepository = true
     }
     this
   }
@@ -185,7 +232,7 @@ abstract class RDD[T: ClassTag](
     this
   }
 
-  private[spark] def ignoreIt(): RDD[T] = {
+  def ignoreIt(): RDD[T] = {
     task.isIgnored = true
     this
   }
@@ -215,12 +262,13 @@ abstract class RDD[T: ClassTag](
   //END: For TransformationGroup
 
   /**
-    * Assign a schema to process the data
+    * Assign a schema to parse and format the data
     * @param schema
     */
-  def setSchema(schema: DataElementSchema[T]): Unit = {
+  def setSchema(schema: DataElementSchema[T]): RDD[T] = {
     task.schema = schema
-    task.parseValue = (obj => schema.splitData(obj.asInstanceOf[T]))
+    task.parseValue = (obj => schema.getSplitedData(obj.asInstanceOf[T]))
+    this
   }
 
   /** A friendly name for this RDD */

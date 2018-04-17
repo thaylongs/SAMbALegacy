@@ -24,6 +24,7 @@ import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 
 import br.uff.spark.advancedpipe.{FileGroup, FileGroupTemplate}
+import br.uff.spark.schema.DefaultBinaryFilesSchema
 import br.uff.spark.versioncontrol.VersionControl
 import br.uff.spark.{DataElement, DataflowProvenance, TransformationType}
 
@@ -946,7 +947,9 @@ class SparkContext(config: SparkConf) extends Logging {
       classOf[String],
       classOf[PortableDataStream],
       updateConf,
-      minPartitions).setName(path)
+      minPartitions)
+      .setName(path)
+      .setSchema(new DefaultBinaryFilesSchema())
   }
 
   /**
@@ -1333,17 +1336,17 @@ class SparkContext(config: SparkConf) extends Logging {
           .mapPartitionsWithTaskInfo[FileGroup] { (iter, task) =>
           val cache = iter.toList
           val result = FileGroup.fileGroupOf(template.baseDir, template.extrasInfo, cache.map(a => a.value).toArray)
+          val dataElement = DataElement.of(result, task, task.isIgnored, cache: _*)
           if (VersionControl.isEnable) {
             result.setName(template.name)
-            VersionControl.getInstance.writeFileGroup(task, result)
+            VersionControl.getInstance.writeFileGroup(task, result, dataElement.id)
           }
-          val dataElement = DataElement.of(result, task, task.isIgnored, cache: _*)
           Iterator(dataElement)
         }.setTransformationType(TransformationType.FILE_GROUP)
         rddResult.setName("File group = " + template.getName)
         rddResult
       })
-    union(allFileGroups)
+    union(allFileGroups).ignoreIt()
   }
 
   /* Spark - UFF */
@@ -2060,7 +2063,7 @@ class SparkContext(config: SparkConf) extends Logging {
       func: (TaskContext, Iterator[DataElement[T]]) => U,
       partitions: Seq[Int],
       resultHandler: (Int, U) => Unit): Unit = {
-    rdd.task.checkAndPersist()
+    rdd.checkAndPersistProvenance()
     if (stopped.get()) {
       throw new IllegalStateException("SparkContext has been shutdown")
     }

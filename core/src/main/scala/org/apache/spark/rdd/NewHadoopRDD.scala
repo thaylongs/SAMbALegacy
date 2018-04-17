@@ -241,7 +241,7 @@ class NewHadoopRDD[K, V](
         if (inputMetrics.recordsRead % SparkHadoopUtil.UPDATE_INPUT_METRICS_INTERVAL_RECORDS == 0) {
           updateBytesRead()
         }
-        DataElement.of((reader.getCurrentKey, reader.getCurrentValue))
+        DataElement.of((reader.getCurrentKey, reader.getCurrentValue), task, false) // this task is only to get schema
       }
 
       private def close(): Unit = {

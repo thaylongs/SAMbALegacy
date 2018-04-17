@@ -18,9 +18,9 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   private val STMT_INSERT_TASK = con.prepare(
     """
       |INSERT INTO dfanalyzer."Task"
-      |            ("executionID", id, description, "transformationType", "schemaFields")
+      |            ("executionID", id, description, "transformationType", "schemaFields", "usingDefaultSchema", "hasDataInRepository")
       |VALUES
-      |            (?, ?, ?, ?, ?);
+      |            (?, ?, ?, ?, ?, ?, ?);
     """.stripMargin)
 
   private val STMT_DEPENDENCIES_OF_TASK = con.prepare(
@@ -34,8 +34,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   override def insertTask(task: Task): Unit = {
     var fields: java.util.List[String] = null
 
-    if (task.schema != null)
-      fields = java.util.Arrays.asList(task.schema.geFieldsNames(): _*)
+    fields = java.util.Arrays.asList(task.schema.geFieldsNames(): _*)
 
     con.executeAsync(
       STMT_INSERT_TASK.bind(
@@ -43,7 +42,9 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
         task.id,
         task.description,
         task.transformationType.toString,
-        fields
+        fields,
+        java.lang.Boolean.valueOf(task.usingDefaultSchema),
+        java.lang.Boolean.valueOf(task.hasDataInRepository)
       )
     )
 
@@ -56,6 +57,23 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
     )
   }
 
+  private val STMT_INSERT_FILE_GROUP_REFERENCE = con.prepare(
+    """
+      |INSERT INTO dfanalyzer."FileGroupReference"
+      |            ("executionID", "id", "folderPath")
+      |VALUES
+      |            (?, ?, ?);
+    """.stripMargin)
+
+  override def insertFileGroupReference(dataElementID: UUID, folderPathInRepository: String): Unit = {
+    con.executeAsync(
+      STMT_INSERT_FILE_GROUP_REFERENCE.bind(
+        execution.ID,
+        dataElementID,
+        folderPathInRepository
+      )
+    )
+  }
 
   override def close(): Unit = {
     try {
@@ -86,7 +104,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   val STMT_INSERT_EXECUTION = con.prepare(
     """
       | INSERT INTO dfanalyzer."Execution"
-      |            (id, "StartTime", "EndTime", "AplicationName")
+      |            (id, "StartTime", "EndTime", "ApplicationName")
       |VALUES
       |            (?, ?, ?, ?);
     """.stripMargin)
@@ -105,7 +123,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   val STMT_INSERT_DATA_ELEMENT = con.prepare(
     """
       |INSERT INTO dfanalyzer."DataElement"
-      |            (id, value, "executionID")
+      |            (id, values, "executionID")
       |VALUES
       |            (?, ?, ?);
     """.stripMargin)
@@ -193,7 +211,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
       |UPDATE
       |   dfanalyzer."DataElement"
       |SET
-      |   value = ?
+      |   values = ?
       |WHERE
       |     "executionID"=?
       |  AND
@@ -249,30 +267,4 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
     )
   }
 
-  override def allFilesOfExecution(id: UUID, onRead: (String, String) => Unit): Unit = {
-    val sqlDeleteDependencies = ""
-    val stmt = con.prepare(sqlDeleteDependencies)
-      .bind(id)
-    val rs = con.execute(stmt)
-    val iter = rs.iterator()
-    while (iter.hasNext) {
-      val next = iter.next()
-      onRead(next.getUUID("ID").toString, next.getString("Value"))
-    }
-  }
-
-
-  override def allRelationshipBetweenDataElement(id: UUID, onRead: (String, String) => Unit): Unit = {
-    val sqlDeleteDependencies = "SELECT  source, target from dfanalyzer.\"DependenciesOfDataElement\" WHERE \"executionID\" = ?"
-    val stmt = con.prepare(sqlDeleteDependencies)
-      .bind(id)
-    val rs = con.execute(stmt)
-    val iter = rs.iterator()
-    while (iter.hasNext) {
-      val next = iter.next()
-      for (elem <- next.getSet("source", classOf[UUID]).toArray) {
-        onRead(elem.toString, next.getUUID("target").toString)
-      }
-    }
-  }
 }

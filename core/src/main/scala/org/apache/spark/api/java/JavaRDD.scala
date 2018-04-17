@@ -17,7 +17,8 @@
 
 package org.apache.spark.api.java
 
-import br.uff.spark.{DataElementSchema, TransformationGroup}
+import br.uff.spark.TransformationGroup
+import br.uff.spark.schema.DataElementSchema
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag

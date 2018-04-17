@@ -60,7 +60,7 @@ class FileGroupTemplate(
   def this(baseDir: File, files: List[File], extrasInfo: Map[String, Any]) =
     this(baseDir, files.asJava, new util.HashMap[String, Any](extrasInfo.asJava))
 
-  def allPaths: String = files.asScala.map(f => f.toString).mkString(",")
+  def allPaths: String = files.asScala.map(file => s"file://${file.getAbsolutePath}").mkString(",")
 
   var name: String = null
 

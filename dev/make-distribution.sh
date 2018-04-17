@@ -271,6 +271,12 @@ tar -xf "$SPARK_HOME/Third Party/gitblit-1.8.0.tar.gz" -C "$DISTDIR"
 mv "$DISTDIR/gitblit-1.8.0" "$DISTDIR/gitblit"
 cp "$SPARK_HOME/Third Party/MergeMachineBranch.groovy" "$DISTDIR/gitblit/data/groovy"
 echo "groovy.postReceiveScripts = MergeMachineBranch.groovy" >> "$DISTDIR/gitblit/data/gitblit.properties"
+cd "$DISTDIR"
+ln -s gitblit/data/git/ gitRepository
+cd ..
+
+#Copy Cassandra DataBase Schema
+cp "$SPARK_HOME"/CassandraDatabaseScript.cql "$DISTDIR"
 
 #Make the  dist package
 if [ "$MAKE_TGZ" == "true" ]; then

@@ -19,7 +19,8 @@ package org.apache.spark.api.java
 
 import java.lang.{Double => JDouble}
 
-import br.uff.spark.{DataElement, DataElementSchema, TransformationGroup}
+import br.uff.spark.{TransformationGroup}
+import br.uff.spark.schema.DataElementSchema
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag

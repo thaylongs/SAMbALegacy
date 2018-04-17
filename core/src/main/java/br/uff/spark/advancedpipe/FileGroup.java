@@ -58,7 +58,8 @@ public class FileGroup implements Serializable {
     public void saveFilesAt(File dir) throws IOException {
         for (FileElement fileElement : fileElements) {
             File targetFolder = new File(dir, fileElement.getFilePath());
-            targetFolder.mkdirs();
+            if(!targetFolder.exists())
+                targetFolder.mkdirs();
             FileUtils.copyInputStreamToFile(fileElement.getContents().toInputStream(), new File(targetFolder, fileElement.getFileName()));
         }
     }
@@ -103,7 +104,7 @@ public class FileGroup implements Serializable {
                 Path parentPath = baseDir.toPath().toAbsolutePath()
                         .relativize(file.toPath())
                         .getParent();
-                filePath = parentPath != null ? parentPath.toString() : "";
+                filePath = parentPath != null ? parentPath.toString() : "/";
             } else {
                 filePath = file.getParent();
             }

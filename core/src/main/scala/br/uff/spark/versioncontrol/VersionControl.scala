@@ -5,7 +5,7 @@ import java.nio.file.{Files, Paths}
 import java.util.UUID
 import java.util.concurrent.{Executors, TimeUnit}
 
-import br.uff.spark.Task
+import br.uff.spark.{DataElement, DataflowProvenance, Task}
 import br.uff.spark.advancedpipe.FileGroup
 import org.apache.commons.io.FileUtils
 import org.apache.log4j.Logger
@@ -36,23 +36,25 @@ class VersionControl private() {
 
   private val log: Logger = org.apache.log4j.Logger.getLogger(classOf[VersionControl])
   private var tempDir: File = null
-  private val executorService = Executors.newSingleThreadExecutor()
+  private var executorService = Executors.newSingleThreadExecutor()
   private var somethingWasWriting = false
   private var isRemoteRepository = false
   private val gitServerManager = new GitServerManager
   private var currentBranchName: String = null
+  private var executorID = "Master"
 
   def startGitServer(baseNameLog: String): Unit = {
     gitServerManager.startGitblitServer(baseNameLog)
   }
 
   def cloneSameMachineRepository(sparkContext: SparkContext): Unit = {
-    cloneRepository(sparkContext.executionID, sparkContext.appName, sparkContext.getConf.get("spark.master"), null, null)
+    cloneRepository(sparkContext.executionID, sparkContext.appName, sparkContext.getConf.get("spark.master"), null, "master")
   }
 
   def cloneRepository(executionID: UUID, appName: String, masterProp: String, masterHostName: String, executorID: String): Unit = {
     isRemoteRepository = !masterProp.startsWith("local")
     currentBranchName = executionID.toString
+    this.executorID = executorID.toString
     var exitValue = if (isRemoteRepository) {
       if (masterHostName == null) throw new NullPointerException("The Master Host Name  is null")
       tempDir = new File(s"/tmp/git-${executionID}_${UUID.randomUUID()}")
@@ -75,9 +77,12 @@ class VersionControl private() {
     gitServerManager.createNewExecutionBranch(sparkContext.appName, sparkContext.executionID)
     if (sparkContext.getConf.get("spark.master").startsWith("local"))
       cloneSameMachineRepository(sparkContext)
+    if (executorService.isShutdown) {
+      executorService = Executors.newSingleThreadExecutor()
+    }
   }
 
-  def writeFileGroup(task: Task, fileGroup: FileGroup): Unit = {
+  def writeFileGroup(task: Task, fileGroup: FileGroup, dataElementID: UUID): Unit = {
     if (fileGroup.getName == null) {
       log.error("This file group doesn't have the git id")
       return
@@ -91,7 +96,9 @@ class VersionControl private() {
     executorService.submit(new Runnable {
       override def run(): Unit = {
         somethingWasWriting = true
-        val target = new File(tempDir, task.description + "/" + fileGroup.getName)
+        val folderInRepository = task.description + "/" + fileGroup.getName
+        val target = new File(tempDir, folderInRepository)
+        DataflowProvenance.getInstance.insertFileGroupReference(dataElementID, folderInRepository)
         if (!target.exists()) {
           target.mkdirs()
         }
@@ -105,7 +112,17 @@ class VersionControl private() {
         }
         var exitValue = Process(Seq("git", "add", "-A"), tempDir).!
         checkExitStatus(exitValue, "Success add all files to commit", "Failed on add all files to commit")
-        exitValue = Process(Seq("git", "commit", "-m", s"Task id: ${task.id} description: ${task.description}. Committing File Group: ${fileGroup.getName}"), tempDir).!
+        exitValue = Process(
+          Seq(
+            "git", "commit",
+            "-m", s"Task id: ${task.id} description: ${task.description}. Committing File Group: ${fileGroup.getName}"
+          ),
+          tempDir,
+          "GIT_COMMITTER_NAME" -> s"Machine ${executorID}",
+          "GIT_AUTHOR_NAME" -> s"Machine ${executorID}",
+          "GIT_COMMITTER_EMAIL" -> s"machine_${executorID}@fakemail.org",
+          "GIT_AUTHOR_EMAIL" -> s"machine_${executorID}@fakemail.org"
+        ).!
         checkExitStatus(exitValue, "Success commit the new files", "Failed on commit the new files")
       }
     })

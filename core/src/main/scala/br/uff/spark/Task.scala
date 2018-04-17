@@ -4,6 +4,7 @@ import java.io.Serializable
 import java.util.UUID
 
 import br.uff.spark.TransformationType.TransformationType
+import br.uff.spark.schema.DataElementSchema
 import org.apache.spark.rdd.RDD
 
 import scala.collection.mutable
@@ -15,10 +16,12 @@ class Task(@transient val rdd: RDD[_ <: Any]) extends Serializable {
   var isIgnored = false
   var alreadyPersisted = false
   var description: String = "TaskID_" + (if (rdd == null) "" else rdd.id) //This if is for run test without RDD
+  var hasDataInRepository = false
 
   /* Schema of Data*/
+  var usingDefaultSchema: Boolean = false
   var schema: DataElementSchema[_] = null
-  var parseValue: (Any) => Array[String] = null
+  var parseValue: (Any) => Array[Array[String]] = null
 
   /* Transfomation Group of Task*/
   var transformation: TransformationGroup = null

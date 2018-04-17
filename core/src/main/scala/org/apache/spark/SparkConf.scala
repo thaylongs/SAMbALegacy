@@ -576,13 +576,14 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
 
   /*SciSpark*/
 
-  def enableProvence(): SparkConf = {
+  def enableProvenance(): SparkConf = {
     set("spark.sciSpark.enableProvenance", "true")
   }
 
-  def disableProvence(): SparkConf = {
+  def disableProvenance(): SparkConf = {
     set("spark.sciSpark.enableProvenance", "false")
   }
+
 
   def enableVersionControl(): SparkConf = {
     set("spark.sciSpark.versionControl", "true")
@@ -601,12 +602,12 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
   /*Loading default values*/
 
   def loadDefaultSciSparkValues(): Unit ={
-    enableProvence()
+    enableProvenance()
     enableVersionControl()
 
     val ENABLE_PROVENANCE = System.getenv("ENABLE_PROVENANCE")
     if(ENABLE_PROVENANCE!=null && ENABLE_PROVENANCE.toBoolean == false){
-      disableProvence()
+      disableProvenance()
     }
     val ENABLE_VCS = System.getenv("ENABLE_VCS")
     if(ENABLE_VCS!=null && ENABLE_VCS.toBoolean == false){

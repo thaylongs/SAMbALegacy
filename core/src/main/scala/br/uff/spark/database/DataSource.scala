@@ -1,10 +1,10 @@
 package br.uff.spark
 
-import java.sql.{Connection, SQLException}
+import java.sql.SQLException
 import java.util.concurrent.atomic.AtomicInteger
-import com.datastax.driver.core.CodecRegistry
+
 import br.uff.spark.database.CassandraCodecs.CodecsTaskToUUID
-import com.datastax.driver.core.{Cluster, PoolingOptions, Session}
+import com.datastax.driver.core._
 
 object DataSource {
 
@@ -31,6 +31,10 @@ object DataSource {
 
   private def createConnectionPool(): Cluster = {
     val poolingOptions = new PoolingOptions
+
+    poolingOptions.setConnectionsPerHost(HostDistance.LOCAL, 5, 5)
+    poolingOptions.setConnectionsPerHost(HostDistance.REMOTE, 4, 4)
+
     val cluster = Cluster.builder()
       .addContactPoint("127.0.0.1")
       .withPort(9042)

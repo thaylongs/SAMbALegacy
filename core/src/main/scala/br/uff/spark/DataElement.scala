@@ -2,9 +2,9 @@ package br.uff.spark
 
 import java.io.Serializable
 import java.util
-import java.util.concurrent.atomic.AtomicLong
 import java.util.{Random, UUID}
 
+import br.uff.spark.schema.DefaultSchema
 import com.fasterxml.uuid.Generators
 
 import scala.beans.BeanProperty
@@ -55,9 +55,11 @@ object DataElement {
 
   def ignoringSchemaOf[T](element: T, task: Task, ignore: Boolean, dependencies: DataElement[_ <: Any]*): DataElement[T] = {
     val result = new DataElement(element, task, ignore) {
-      override def applySchemaToTheValue(): util.List[String] = {
-        return java.util.Arrays.asList(this.value.toString)
+
+      override def applySchemaToTheValue(): util.List[util.List[String]] = {
+        return util.Arrays.asList(java.util.Arrays.asList(this.value.toString))
       }
+
     }
 
     for (dependency <- dependencies) {
@@ -73,7 +75,14 @@ object DataElement {
     result
   }
 
-  var UUID_Gen = Generators.randomBasedGenerator(new Random(512))
+  var UUID_Gen = Generators.timeBasedGenerator()
+  var defaultSchema = new DefaultSchema[Any]()
+  var workerID = 0
+
+  def getNextId(): UUID = {
+    val id = DataElement.UUID_Gen.generate()
+    return new UUID(id.getMostSignificantBits, id.getLeastSignificantBits + workerID)
+  }
 
 }
 
@@ -82,7 +91,7 @@ class DataElement[T](var value: T, var task: Task, var ignore: Boolean = false) 
   @BeanProperty
   var id: UUID =
     if (ignore) null
-    else DataElement.UUID_Gen.generate()
+    else DataElement.getNextId()
 
   var dependenciesIDS: java.util.List[UUID] = new java.util.ArrayList[UUID]()
 
@@ -134,14 +143,18 @@ class DataElement[T](var value: T, var task: Task, var ignore: Boolean = false) 
     this
   }
 
-  def applySchemaToTheValue(): java.util.List[String] = {
-    val result =
-      if (task == null || task.schema == null)
-        Array(value.toString)
+  def applySchemaToTheValue(): java.util.List[java.util.List[String]] = {
+    val data =
+      if (task == null)
+        DataElement.defaultSchema.getSplitedData(value)
       else
         task.parseValue.apply(value)
-    return java.util.Arrays.asList(result: _*)
+    val result = new util.ArrayList[java.util.List[String]](data.length)
+    data.foreach(elem => result.add(java.util.Arrays.asList(elem: _*)))
+    result
   }
+
+  def getSchemaHeader(): java.util.List[String] = java.util.Arrays.asList(task.schema.geFieldsNames(): _*)
 
   def cloneWithNewValue[W](newValue: W): DataElement[W] = {
     val newDE = new DataElement(newValue, task, ignore)

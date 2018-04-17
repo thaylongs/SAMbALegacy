@@ -22,7 +22,7 @@ import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.{Locale, UUID}
 
-import br.uff.spark.DataflowProvenance
+import br.uff.spark.{DataElement, DataflowProvenance}
 import br.uff.spark.versioncontrol.VersionControl
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark._
@@ -231,6 +231,8 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
         val masterProp  =  driverConf.get("spark.master")
         VersionControl.getInstance.cloneRepository(executionID, appName, masterProp, hostname, executorId)
       }
+
+      DataElement.workerID = executionID.hashCode()
      
       /* Starting connection with database */
       DataflowProvenance.getInstance.init(executionID)

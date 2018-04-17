@@ -25,6 +25,8 @@ trait DataBaseBasicMethods {
 
   def insertDependenciesOfDataElement(dataElement: DataElement[_ <: Any], ids: java.util.List[UUID]): Unit = {}
 
+  def insertFileGroupReference(dataElementID: UUID, folderPathInRepository: String): Unit = {}
+
   /* Update operations*/
   def updateExecution(execution: Execution): Unit = {}
 

@@ -3,7 +3,7 @@ CREATE KEYSPACE dfanalyzer WITH REPLICATION = { 'class' : 'SimpleStrategy', 'rep
 
 CREATE TABLE dfanalyzer."Execution" (
 	id uuid,
-	"AplicationName" text,
+	"ApplicationName" text,
 	"EndTime" timestamp,
 	"StartTime" timestamp,
 	PRIMARY KEY (id)
@@ -12,8 +12,8 @@ CREATE TABLE dfanalyzer."Execution" (
 CREATE TABLE dfanalyzer."TransformationGroup" (
 	"executionID" uuid,
 	id uuid,
-    	"initTasksIDS" SET<uuid>,
-    	"intermediaryTasksIDS"  SET<uuid>,
+  "initTasksIDS" SET<uuid>,
+  "intermediaryTasksIDS"  SET<uuid>,
 	"finishTaskID" uuid,
 	PRIMARY KEY (("executionID"), id)
 );
@@ -23,14 +23,24 @@ CREATE TABLE dfanalyzer."Task" (
 	id uuid,
 	description text,
 	"transformationType" text,
+	"usingDefaultSchema" boolean,
 	"schemaFields" LIST<text>,
-	PRIMARY KEY ("executionID", id)
+  "hasDataInRepository" boolean,
+	PRIMARY KEY (("executionID"), id)
 );
 
 CREATE TABLE dfanalyzer."DataElement" (
 	"executionID" uuid,
 	id uuid,
-	value LIST<text>,
+	values LIST<frozen<LIST<text>>>,
+	PRIMARY KEY (("executionID"), id)
+);
+
+
+CREATE TABLE dfanalyzer."FileGroupReference" (
+	"executionID" uuid,
+	id uuid,// DataElement ID
+	"folderPath" text,
 	PRIMARY KEY (("executionID"), id)
 );
 
@@ -42,12 +52,12 @@ CREATE TABLE dfanalyzer."DependenciesOfTask" (
 );
 
 CREATE TABLE dfanalyzer."DependenciesOfDataElement" (
+	"executionID" uuid,
 	task uuid,
 	source SET<uuid>,
-	"executionID" uuid,
 	target uuid,
-	PRIMARY KEY ("executionID", task, target)
-) ;
+	PRIMARY KEY (("executionID"), task, target)
+);
 
 TRUNCATE dfanalyzer."DataElement";
 TRUNCATE dfanalyzer."DependenciesOfDataElement";

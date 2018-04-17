@@ -88,6 +88,10 @@ class DataflowProvenance private() {
     dao.insertDependenciesOfDataElement(dataElement, ids)
   }
 
+  def insertFileGroupReference(dataElementID: UUID, folderPathInRepository: String): Unit = {
+    dao.insertFileGroupReference(dataElementID, folderPathInRepository)
+  }
+
   def finish(): Unit = {
     if (!dummyNode) {
       execution.endTime = LocalDateTime.now()

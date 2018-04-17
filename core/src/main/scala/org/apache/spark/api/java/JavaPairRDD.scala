@@ -21,7 +21,8 @@ import java.{lang => jl}
 import java.lang.{Iterable => JIterable}
 import java.util.{Comparator, List => JList}
 
-import br.uff.spark.{DataElement, DataElementSchema, TransformationGroup, TransformationType}
+import br.uff.spark.schema.DataElementSchema
+import br.uff.spark.{TransformationGroup, TransformationType}
 
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
