@@ -117,6 +117,7 @@ class SubmitRestProtocolSuite extends SparkFunSuite {
     intercept[SubmitRestProtocolException] { message.validate() }
     message.sparkProperties = conf.getAll.toMap
     // test JSON
+    message.sparkProperties = message.sparkProperties.filterKeys(key => !key.contains("spark.sciSpark"))
     val json = message.toJson
     assertJsonEquals(json, submitDriverRequestJson)
     val newMessage = SubmitRestProtocolMessage.fromJson(json, classOf[CreateSubmissionRequest])
