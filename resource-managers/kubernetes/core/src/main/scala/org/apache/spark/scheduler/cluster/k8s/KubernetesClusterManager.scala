@@ -20,10 +20,10 @@ import java.io.File
 
 import io.fabric8.kubernetes.client.Config
 
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkContext, SparkException}
+import org.apache.spark.deploy.k8s.{KubernetesUtils, SparkKubernetesClientFactory}
 import org.apache.spark.deploy.k8s.Config._
 import org.apache.spark.deploy.k8s.Constants._
-import org.apache.spark.deploy.k8s.SparkKubernetesClientFactory
 import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.{ExternalClusterManager, SchedulerBackend, TaskScheduler, TaskSchedulerImpl}
 import org.apache.spark.util.ThreadUtils
@@ -33,6 +33,12 @@ private[spark] class KubernetesClusterManager extends ExternalClusterManager wit
   override def canCreate(masterURL: String): Boolean = masterURL.startsWith("k8s")
 
   override def createTaskScheduler(sc: SparkContext, masterURL: String): TaskScheduler = {
+    if (masterURL.startsWith("k8s") &&
+      sc.deployMode == "client" &&
+      !sc.conf.get(KUBERNETES_DRIVER_SUBMIT_CHECK).getOrElse(false)) {
+      throw new SparkException("Client mode is currently not supported for Kubernetes.")
+    }
+
     new TaskSchedulerImpl(sc)
   }
 
@@ -40,17 +46,16 @@ private[spark] class KubernetesClusterManager extends ExternalClusterManager wit
       sc: SparkContext,
       masterURL: String,
       scheduler: TaskScheduler): SchedulerBackend = {
-    val sparkConf = sc.getConf
-
+    val executorSecretNamesToMountPaths = KubernetesUtils.parsePrefixedKeyValuePairs(
+      sc.conf, KUBERNETES_EXECUTOR_SECRETS_PREFIX)
     val kubernetesClient = SparkKubernetesClientFactory.createKubernetesClient(
       KUBERNETES_MASTER_INTERNAL_URL,
-      Some(sparkConf.get(KUBERNETES_NAMESPACE)),
-      APISERVER_AUTH_DRIVER_MOUNTED_CONF_PREFIX,
-      sparkConf,
+      Some(sc.conf.get(KUBERNETES_NAMESPACE)),
+      KUBERNETES_AUTH_DRIVER_MOUNTED_CONF_PREFIX,
+      sc.conf,
       Some(new File(Config.KUBERNETES_SERVICE_ACCOUNT_TOKEN_PATH)),
       Some(new File(Config.KUBERNETES_SERVICE_ACCOUNT_CA_CRT_PATH)))
 
-    val executorPodFactory = new ExecutorPodFactoryImpl(sparkConf)
     val allocatorExecutor = ThreadUtils
       .newDaemonSingleThreadScheduledExecutor("kubernetes-pod-allocator")
     val requestExecutorsService = ThreadUtils.newDaemonCachedThreadPool(
@@ -58,7 +63,7 @@ private[spark] class KubernetesClusterManager extends ExternalClusterManager wit
     new KubernetesClusterSchedulerBackend(
       scheduler.asInstanceOf[TaskSchedulerImpl],
       sc.env.rpcEnv,
-      executorPodFactory,
+      new KubernetesExecutorBuilder,
       kubernetesClient,
       allocatorExecutor,
       requestExecutorsService)

@@ -363,14 +363,14 @@ abstract class ShuffleSuite extends SparkFunSuite with Matchers with LocalSparkC
 
     // first attempt -- its successful
     val writer1 = manager.getWriter[Int, Int](shuffleHandle, 0,
-      new TaskContextImpl(0, 0, 0L, 0, taskMemoryManager, new Properties, metricsSystem),null)
+      new TaskContextImpl(0, 0, 0, 0L, 0, taskMemoryManager, new Properties, metricsSystem),null)
     val data1 = (1 to 10).map { x => x -> x}.map(a=>DataElement.of(a))
 
     // second attempt -- also successful.  We'll write out different data,
     // just to simulate the fact that the records may get written differently
     // depending on what gets spilled, what gets combined, etc.
     val writer2 = manager.getWriter[Int, Int](shuffleHandle, 0,
-      new TaskContextImpl(0, 0, 1L, 0, taskMemoryManager, new Properties, metricsSystem),null)
+      new TaskContextImpl(0, 0, 0, 1L, 0, taskMemoryManager, new Properties, metricsSystem), null)
     val data2 = (11 to 20).map { x => x -> x}.map(a=>DataElement.of(a))
 
     // interleave writes of both attempts -- we want to test that both attempts can occur
@@ -397,8 +397,8 @@ abstract class ShuffleSuite extends SparkFunSuite with Matchers with LocalSparkC
       mapTrackerMaster.registerMapOutput(0, 0, mapStatus)
     }
 
-    val reader = manager.getReader[Int, Int](null,shuffleHandle, 0, 1,
-      new TaskContextImpl(1, 0, 2L, 0, taskMemoryManager, new Properties, metricsSystem))
+    val reader = manager.getReader[Int, Int](task = null, shuffleHandle, 0, 1,
+      new TaskContextImpl(1, 0, 0, 2L, 0, taskMemoryManager, new Properties, metricsSystem))
     val readData = DataflowUtils.extractFromIterator(reader.read(null)).toIndexedSeq
     assert(readData === DataflowUtils.extractFromIterator(data1.toIterator).toIndexedSeq || readData === DataflowUtils.extractFromIterator(data2.toIterator).toIndexedSeq)
 

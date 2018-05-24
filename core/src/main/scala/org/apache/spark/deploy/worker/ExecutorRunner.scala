@@ -23,6 +23,9 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 import com.google.common.io.Files
+
+import org.apache.spark.{SecurityManager, SparkConf}
+import org.apache.spark.deploy.{ApplicationDescription, Command, ExecutorState}
 import org.apache.spark.deploy.DeployMessages.ExecutorStateChanged
 import org.apache.spark.deploy.{ApplicationDescription, ExecutorState}
 import org.apache.spark.internal.Logging
@@ -153,7 +156,11 @@ private[deploy] class ExecutorRunner(
   private def fetchAndRunExecutor() {
     try {
       // Launch the process
-      val builder = CommandUtils.buildProcessBuilder(appDesc.command, new SecurityManager(conf),
+      val subsOpts = appDesc.command.javaOpts.map {
+        Utils.substituteAppNExecIds(_, appId, execId.toString)
+      }
+      val subsCommand = appDesc.command.copy(javaOpts = subsOpts)
+      val builder = CommandUtils.buildProcessBuilder(subsCommand, new SecurityManager(conf),
         memory, sparkHome.getAbsolutePath, substituteVariables)
       val command = builder.command()
       val formattedCommand = command.asScala.mkString("\"", "\" \"", "\"")

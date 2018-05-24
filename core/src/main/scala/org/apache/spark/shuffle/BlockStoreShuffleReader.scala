@@ -80,21 +80,20 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // An interruptible iterator must be used here in order to support task cancellation
     val interruptibleIter = new InterruptibleIterator[(Any, Any)](context, metricIter)
 
-    val aggregatedIter: Iterator[DataElement[_<:Product2[K, C]]] = if (dep.aggregator.isDefined) {
+    val aggregatedIter: Iterator[DataElement[Product2[K, C]]] = if (dep.aggregator.isDefined) {
       if (dep.mapSideCombine) {
         // We are reading values that are already combined
-        val combinedKeyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, C)]]
-        dep.aggregator.get.combineCombinersByKey(combinedKeyValuesIterator, context, taskOfRDD)
+        val combinedKeyValuesIterator = interruptibleIter.asInstanceOf[Iterator[DataElement[(K, C)]]]
+        dep.aggregator.get.combineCombinersByKey(combinedKeyValuesIterator, context, taskOfRDD).asInstanceOf[Iterator[DataElement[Product2[K, C]]]]
       } else {
         // We don't know the value type, but also don't care -- the dependency *should*
         // have made sure its compatible w/ this aggregator, which will convert the value
         // type to the combined type C
         val keyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, Nothing)]]
-        dep.aggregator.get.combineValuesByKey(keyValuesIterator, context, taskOfRDD)
+        dep.aggregator.get.combineValuesByKey(keyValuesIterator, context, taskOfRDD).asInstanceOf[Iterator[DataElement[Product2[K, C]]]]
       }
     } else {
-      require(!dep.mapSideCombine, "Map-side combine without Aggregator specified!")
-      // The follow code it's necessary because It read data that was writed in disk with BypassMergeSortShuffleWriter
+      // The follow code it's necessary because It read data that was writed in disk with BypassMergeSortShuffleWriter, by Thaylon
       var iterableWrapper = interruptibleIter.asInstanceOf[Iterator[(K, DataElement[(K, C)])]]
       new AbstractIterator[DataElement[(K, C)]]() {
         override def hasNext = iterableWrapper.hasNext
@@ -102,11 +101,11 @@ private[spark] class BlockStoreShuffleReader[K, C](
         override def next() = {
           iterableWrapper.next()._2
         }
-      }
+      }.asInstanceOf[Iterator[DataElement[Product2[K, C]]]]
     }
 
     // Sort the output if there is a sort ordering defined.
-    dep.keyOrdering match {
+    val resultIter = dep.keyOrdering match {
       case Some(keyOrd: Ordering[K]) =>
         // Create an ExternalSorter to sort the data.
         val sorter =
@@ -115,9 +114,21 @@ private[spark] class BlockStoreShuffleReader[K, C](
         context.taskMetrics().incMemoryBytesSpilled(sorter.memoryBytesSpilled)
         context.taskMetrics().incDiskBytesSpilled(sorter.diskBytesSpilled)
         context.taskMetrics().incPeakExecutionMemory(sorter.peakMemoryUsedBytes)
+        // Use completion callback to stop sorter if task was finished/cancelled.
+        context.addTaskCompletionListener(_ => {
+          sorter.stop()
+        })
         CompletionIterator[DataElement[Product2[K, C]], Iterator[DataElement[Product2[K, C]]]](sorter.iterator, sorter.stop())
       case None =>
-        aggregatedIter.asInstanceOf[Iterator[DataElement[Product2[K, C]]]]
+        aggregatedIter
+    }
+
+    resultIter match {
+      case _: InterruptibleIterator[DataElement[Product2[K, C]]] => resultIter
+      case _ =>
+        // Use another interruptible iterator here to support task cancellation as aggregator
+        // or(and) sorter may have consumed previous interruptible iterator.
+        new InterruptibleIterator[DataElement[Product2[K, C]]](context, resultIter)
     }
   }
 }

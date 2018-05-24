@@ -36,6 +36,7 @@ import org.eclipse.jetty.servlet.{ServletContextHandler, ServletHolder}
 import org.json4s.JsonAST._
 import org.json4s.jackson.JsonMethods
 import org.json4s.jackson.JsonMethods._
+import org.mockito.Mockito._
 import org.openqa.selenium.WebDriver
 import org.openqa.selenium.htmlunit.HtmlUnitDriver
 import org.scalatest.{BeforeAndAfter, Matchers}
@@ -45,9 +46,10 @@ import org.scalatest.selenium.WebBrowser
 
 import org.apache.spark._
 import org.apache.spark.deploy.history.config._
+import org.apache.spark.status.api.v1.ApplicationInfo
 import org.apache.spark.status.api.v1.JobData
 import org.apache.spark.ui.SparkUI
-import org.apache.spark.util.{ResetSystemProperties, Utils}
+import org.apache.spark.util.{ResetSystemProperties, ShutdownHookManager, Utils}
 
 /**
  * A collection of tests against the historyserver, including comparing responses from the json
@@ -155,6 +157,8 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
       "applications/local-1426533911241/1/stages/0/0/taskList",
     "stage task list from multi-attempt app json(2)" ->
       "applications/local-1426533911241/2/stages/0/0/taskList",
+    "blacklisting for stage" -> "applications/app-20180109111548-0000/stages/0/0",
+    "blacklisting node for stage" -> "applications/application_1516285256255_0012/stages/0/0",
 
     "rdd list storage json" -> "applications/local-1422981780767/storage/rdd",
     "executor node blacklisting" -> "applications/app-20161116163331-0000/executors",
@@ -263,7 +267,7 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
 
     val badStageAttemptId = getContentAndCode("applications/local-1422981780767/stages/1/1")
     badStageAttemptId._1 should be (HttpServletResponse.SC_NOT_FOUND)
-    badStageAttemptId._3 should be (Some("unknown attempt 1 for stage 1."))
+    badStageAttemptId._3 should be (Some("unknown attempt for stage 1.  Found attempts: [0]"))
 
     val badStageId2 = getContentAndCode("applications/local-1422981780767/stages/flimflam")
     badStageId2._1 should be (HttpServletResponse.SC_NOT_FOUND)
@@ -276,6 +280,29 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
       "got \"foo\""))
 
     getContentAndCode("foobar")._1 should be (HttpServletResponse.SC_NOT_FOUND)
+  }
+
+  test("automatically retrieve uiRoot from request through Knox") {
+    assert(sys.props.get("spark.ui.proxyBase").isEmpty,
+      "spark.ui.proxyBase is defined but it should not for this UT")
+    assert(sys.env.get("APPLICATION_WEB_PROXY_BASE").isEmpty,
+      "APPLICATION_WEB_PROXY_BASE is defined but it should not for this UT")
+    val page = new HistoryPage(server)
+    val requestThroughKnox = mock[HttpServletRequest]
+    val knoxBaseUrl = "/gateway/default/sparkhistoryui"
+    when(requestThroughKnox.getHeader("X-Forwarded-Context")).thenReturn(knoxBaseUrl)
+    val responseThroughKnox = page.render(requestThroughKnox)
+
+    val urlsThroughKnox = responseThroughKnox \\ "@href" map (_.toString)
+    val siteRelativeLinksThroughKnox = urlsThroughKnox filter (_.startsWith("/"))
+    all (siteRelativeLinksThroughKnox) should startWith (knoxBaseUrl)
+
+    val directRequest = mock[HttpServletRequest]
+    val directResponse = page.render(directRequest)
+
+    val directUrls = directResponse \\ "@href" map (_.toString)
+    val directSiteRelativeLinks = directUrls filter (_.startsWith("/"))
+    all (directSiteRelativeLinks) should not startWith (knoxBaseUrl)
   }
 
   test("static relative links are prefixed with uiRoot (spark.ui.proxyBase)") {
@@ -291,6 +318,11 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
     val urls = response \\ "@href" map (_.toString)
     val siteRelativeLinks = urls filter (_.startsWith("/"))
     all (siteRelativeLinks) should startWith (uiRoot)
+  }
+
+  test("/version api endpoint") {
+    val response = getUrl("version")
+    assert(response.contains(SPARK_VERSION))
   }
 
   test("ajax rendered relative links are prefixed with uiRoot (spark.ui.proxyBase)") {
@@ -344,7 +376,7 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
         .map(_.get)
         .filter(_.startsWith(url)).toList
 
-      // there are atleast some URL links that were generated via javascript,
+      // there are at least some URL links that were generated via javascript,
       // and they all contain the spark.ui.proxyBase (uiRoot)
       links.length should be > 4
       all(links) should startWith(url + uiRoot)
@@ -485,7 +517,7 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
       json match {
         case JNothing => Seq()
         case apps: JArray =>
-          apps.filter(app => {
+          apps.children.filter(app => {
             (app \ "attempts") match {
               case attempts: JArray =>
                 val state = (attempts.children.head \ "completed").asInstanceOf[JBool]
@@ -503,6 +535,10 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
 
     def activeJobs(): Seq[JobData] = {
       getAppUI.store.jobsList(List(JobExecutionStatus.RUNNING).asJava)
+    }
+
+    def isApplicationCompleted(appInfo: ApplicationInfo): Boolean = {
+      appInfo.attempts.nonEmpty && appInfo.attempts.head.completed
     }
 
     activeJobs() should have size 0
@@ -537,7 +573,7 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
       assert(4 === getNumJobsRestful(), s"two jobs back-to-back not updated, server=$server\n")
     }
     val jobcount = getNumJobs("/jobs")
-    assert(!provider.getListing().next.completed)
+    assert(!isApplicationCompleted(provider.getListing().next))
 
     listApplications(false) should contain(appId)
 
@@ -545,7 +581,7 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
     resetSparkContext()
     // check the app is now found as completed
     eventually(stdTimeout, stdInterval) {
-      assert(provider.getListing().next.completed,
+      assert(isApplicationCompleted(provider.getListing().next),
         s"application never completed, server=$server\n")
     }
 
@@ -559,7 +595,7 @@ class HistoryServerSuite extends SparkFunSuite with BeforeAndAfter with Matchers
     assert(jobcount === getNumJobs("/jobs"))
 
     // no need to retain the test dir now the tests complete
-    logDir.deleteOnExit()
+    ShutdownHookManager.registerShutdownDeleteDir(logDir)
   }
 
   test("ui and api authorization checks") {
