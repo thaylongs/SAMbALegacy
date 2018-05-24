@@ -93,6 +93,8 @@ class SparkConfSuite extends SparkFunSuite with LocalSparkContext with ResetSyst
 
   test("basic get and set") {
     val conf = new SparkConf(false)
+    conf.remove("spark.sciSpark.enableProvenance")
+    conf.remove("spark.sciSpark.versionControl")
     assert(conf.getAll.toSet === Set())
     conf.set("k1", "v1")
     conf.setAll(Seq(("k2", "v2"), ("k3", "v3")))

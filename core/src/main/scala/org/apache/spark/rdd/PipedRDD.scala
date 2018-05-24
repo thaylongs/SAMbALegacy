@@ -26,7 +26,7 @@ import java.io.PrintWriter
 import java.util.{StringTokenizer, UUID}
 import java.util.concurrent.atomic.AtomicReference
 
-import br.uff.spark.{DataElement, DataSource}
+import br.uff.spark.{DataElement, DataSource, DataflowProvenance}
 
 import scala.collection.JavaConverters._
 import scala.collection.{Map, mutable}
@@ -202,35 +202,37 @@ private[spark] class PipedRDD[T: ClassTag](
           logDebug(s"Removed task working directory $taskDirectory")
         }
 
-        new Thread(s"Saving dependencies of pipe process: $command") {
-          override def run() = {
-            DataSource.upCount()
-            val dependenciesIDS = new java.util.ArrayList[UUID]()
-            try {
-              for (usedElements <- allUsedElements.asScala) {
-                if (usedElements.ignore) {
-                  dependenciesIDS.addAll(usedElements.dependenciesIDS)
-                } else {
-                  dependenciesIDS.add(usedElements.id)
-                }
-              }
-              for (createdElements <- allCreatedElements.asScala) {
-                createdElements.setDependencies(dependenciesIDS)
-              }
-            } catch {
-              case e: Exception => e.printStackTrace()
-            } finally {
+        if (DataflowProvenance.isEnable) {
+          new Thread(s"Saving dependencies of pipe process: $command") {
+            override def run() = {
+              DataSource.upCount()
+              val dependenciesIDS = new java.util.ArrayList[UUID]()
               try {
-                DataSource.downCount()
-                allCreatedElements.clear()
-                allUsedElements.clear()
-                dependenciesIDS.clear()
+                for (usedElements <- allUsedElements.asScala) {
+                  if (usedElements.ignore) {
+                    dependenciesIDS.addAll(usedElements.dependenciesIDS)
+                  } else {
+                    dependenciesIDS.add(usedElements.id)
+                  }
+                }
+                for (createdElements <- allCreatedElements.asScala) {
+                  createdElements.setDependencies(dependenciesIDS)
+                }
               } catch {
                 case e: Exception => e.printStackTrace()
+              } finally {
+                try {
+                  DataSource.downCount()
+                  allCreatedElements.clear()
+                  allUsedElements.clear()
+                  dependenciesIDS.clear()
+                } catch {
+                  case e: Exception => e.printStackTrace()
+                }
               }
             }
-          }
-        }.start()
+          }.start()
+        }
       }
 
       private def propagateChildException(): Unit = {

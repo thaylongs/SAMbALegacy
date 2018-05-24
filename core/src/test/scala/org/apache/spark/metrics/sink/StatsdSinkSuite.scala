@@ -19,15 +19,17 @@ package org.apache.spark.metrics.sink
 
 import java.net.{DatagramPacket, DatagramSocket}
 import java.nio.charset.StandardCharsets.UTF_8
-import java.util.Properties
+import java.util.{Locale, Properties}
 import java.util.concurrent.TimeUnit._
 
 import com.codahale.metrics._
-
 import org.apache.spark.{SecurityManager, SparkConf, SparkFunSuite}
 import org.apache.spark.metrics.sink.StatsdSink._
 
 class StatsdSinkSuite extends SparkFunSuite {
+
+  Locale.setDefault(Locale.US)
+
   private val securityMgr = new SecurityManager(new SparkConf(false))
   private val defaultProps = Map(
     STATSD_KEY_PREFIX -> "spark",
