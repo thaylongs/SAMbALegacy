@@ -97,14 +97,14 @@ spark-warehouse/
 #For git sever
 /gitblit/*
 #SAMbA
-SAMbADocker/apache-cassandra
-SAMbADocker/scala
-SAMbADocker/*.tar.gz
-SAMbADocker/*.jar
-SAMbADocker/*.tgz
-SAMbADocker/SAMbA/*
-SAMbADocker/cassandra-env.sh
-SAMbADocker/example/repository/*
-SAMbADocker/example/repository/*
-SAMbADocker/example/database/*
+SAMbA/Docker/apache-cassandra
+SAMbA/Docker/scala
+SAMbA/Docker/*.tar.gz
+SAMbA/Docker/*.jar
+SAMbA/Docker/*.tgz
+SAMbA/Docker/SAMbA/*
+SAMbA/Docker/cassandra-env.sh
+SAMbA/Docker/example/repository/*
+SAMbA/Docker/example/repository/*
+SAMbA/Docker/example/database/*
 *.directory

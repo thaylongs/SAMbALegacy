@@ -27,7 +27,7 @@ fi
 
 echo "SAMbA ..."
 
-filename=$(cd .. && ls spark-*-bin-SAMbA.tgz)
+filename=$(cd ../../ && ls spark-*-bin-SAMbA.tgz)
 name=$(echo "$filename" | sed -r 's/.tgz//g')
 rm -rf "$name"
 rm -rf SAMbA
