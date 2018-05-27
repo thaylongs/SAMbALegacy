@@ -96,3 +96,15 @@ spark-warehouse/
 .Rproj.user
 #For git sever
 /gitblit/*
+#SAMbA
+SAMbADocker/apache-cassandra
+SAMbADocker/scala
+SAMbADocker/*.tar.gz
+SAMbADocker/*.jar
+SAMbADocker/*.tgz
+SAMbADocker/SAMbA/*
+SAMbADocker/cassandra-env.sh
+SAMbADocker/example/repository/*
+SAMbADocker/example/repository/*
+SAMbADocker/example/database/*
+*.directory
