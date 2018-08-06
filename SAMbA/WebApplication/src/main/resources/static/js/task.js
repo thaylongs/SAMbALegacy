@@ -141,7 +141,7 @@ var app = new Vue({
 
 
 swal({
-    title: 'Do you want to see what data elements were used to produce the output?',
+    title: 'Do you want to see what Data Collections were used to produce the output?',
     type: 'question',
     showCancelButton: true,
     confirmButtonColor: '#3085d6',

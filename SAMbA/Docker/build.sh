@@ -32,8 +32,12 @@ name=$(echo "$filename" | sed -r 's/.tgz//g')
 rm -rf "$name"
 rm -rf SAMbA
 
-tar -xzf "../$filename"
+tar -xzf "../../$filename"
 mv "$name" SAMbA
+
+echo "SAMbA Web Interface"
+rm -rf SAMbAWebApplication.jar
+cp ../WebApplication/target/SAMbAWebApplication-*-SNAPSHOT.jar SAMbAWebApplication.jar
 
 echo  "Configuring Files"
 

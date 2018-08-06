@@ -168,7 +168,7 @@ $("#selectNodeLabelGroup :input").closest('label').click(function () {
 
 
 swal({
-    title: 'Do you want to see what elements don\'t pass in the Filter Transformations?',
+    title: 'Do you want to see what Data Collections don\'t pass in the Filter Transformations?',
     type: 'question',
     showCancelButton: true,
     confirmButtonColor: '#3085d6',
