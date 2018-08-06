@@ -34,7 +34,7 @@ class CassandraDBDao(val execution: Execution) extends DataBaseBasicMethods {
   override def insertTask(task: Task): Unit = {
     var fields: java.util.List[String] = null
 
-    fields = java.util.Arrays.asList(task.schema.geFieldsNames(): _*)
+    fields = java.util.Arrays.asList(task.schema.getFieldsNames(): _*)
 
     con.executeAsync(
       STMT_INSERT_TASK.bind(

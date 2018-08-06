@@ -146,7 +146,7 @@ class DataElement[T](var value: T, var task: Task, var ignore: Boolean = false) 
   def applySchemaToTheValue(): java.util.List[java.util.List[String]] = {
     val data =
       if (task == null)
-        DataElement.defaultSchema.getSplitedData(value)
+        DataElement.defaultSchema.getSplittedData(value)
       else
         task.parseValue.apply(value)
     val result = new util.ArrayList[java.util.List[String]](data.length)
@@ -154,7 +154,7 @@ class DataElement[T](var value: T, var task: Task, var ignore: Boolean = false) 
     result
   }
 
-  def getSchemaHeader(): java.util.List[String] = java.util.Arrays.asList(task.schema.geFieldsNames(): _*)
+  def getSchemaHeader(): java.util.List[String] = java.util.Arrays.asList(task.schema.getFieldsNames(): _*)
 
   def cloneWithNewValue[W](newValue: W): DataElement[W] = {
     val newDE = new DataElement(newValue, task, ignore)

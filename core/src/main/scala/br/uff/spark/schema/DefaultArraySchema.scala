@@ -10,7 +10,7 @@ object DefaultArraySchema {
 
 class DefaultArraySchema[T] extends SingleLineSchema[T] {
 
-  override def geFieldsNames(): Array[String] = {
+  override def getFieldsNames(): Array[String] = {
     //    val result = Array.ofDim[String](fieldsSize)
     //    for (i <- 0 until fieldsSize) {
     //      result(i) = s"field $i"

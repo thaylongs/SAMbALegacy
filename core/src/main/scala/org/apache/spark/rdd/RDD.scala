@@ -269,7 +269,7 @@ abstract class RDD[T: ClassTag](
     */
   def setSchema(schema: DataElementSchema[T]): RDD[T] = {
     task.schema = schema
-    task.parseValue = (obj => schema.getSplitedData(obj.asInstanceOf[T]))
+    task.parseValue = (obj => schema.getSplittedData(obj.asInstanceOf[T]))
     this
   }
 

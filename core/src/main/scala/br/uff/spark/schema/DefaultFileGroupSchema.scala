@@ -12,9 +12,9 @@ object DefaultFileGroupSchema {
 }
 
 class DefaultFileGroupSchema[T] extends DataElementSchema[T] {
-  override def geFieldsNames(): Array[String] = Array("Name", "Path", "Size")
+  override def getFieldsNames(): Array[String] = Array("Name", "Path", "Size")
 
-  override def getSplitedData(value: T): Array[Array[String]] = {
+  override def getSplittedData(value: T): Array[Array[String]] = {
     val _value = value.asInstanceOf[FileGroup]
     val result = new Array[Array[String]](_value.getFileElements.length)
     var index = 0

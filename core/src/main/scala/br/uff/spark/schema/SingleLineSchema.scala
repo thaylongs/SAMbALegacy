@@ -13,7 +13,7 @@ package br.uff.spark.schema
   * public class SampleSingleLineResult implements SingleLineSchema<String>{
   *
   *    @Override
-  *    public String[] geFieldsNames() {
+  *    public String[] getFieldsNames() {
   *        return new String[]{"Sample Field Name"};
   *    }
   *
@@ -28,7 +28,7 @@ package br.uff.spark.schema
   */
 trait SingleLineSchema[T] extends DataElementSchema[T] {
 
-  override def getSplitedData(value: T) = Array(splitData(value))
+  override def getSplittedData(value: T) = Array(splitData(value))
 
   def splitData(value: T): Array[String]
 

@@ -16,7 +16,7 @@ object DefaultPairSchema {
 
 class DefaultPairSchema[T] extends SingleLineSchema[T] {
 
-  override def geFieldsNames(): Array[String] = Array("Key", "Value")
+  override def getFieldsNames(): Array[String] = Array("Key", "Value")
 
   override def splitData(value: T): Array[String] = {
     val _value = value.asInstanceOf[Product2[Any, Any]]
