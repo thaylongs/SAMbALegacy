@@ -80,7 +80,7 @@ class JdbcRDD[T: ClassTag](
 
   override def compute(thePart: Partition, context: TaskContext): Iterator[DataElement[T]] = new NextIterator[DataElement[T]]
   {
-    context.addTaskCompletionListener{ context => closeIfNeeded() }
+    context.addTaskCompletionListener[Unit]{ context => closeIfNeeded() }
     val part = thePart.asInstanceOf[JdbcPartition]
     val conn = getConnection()
     val stmt = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)

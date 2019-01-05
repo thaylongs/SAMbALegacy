@@ -105,8 +105,9 @@ class CustomShuffledRDD[K, V, C](
 
   override def compute(p: Partition, context: TaskContext): Iterator[DataElement[(K, C)]] = {
     val part = p.asInstanceOf[CustomShuffledRDDPartition]
+    val metrics = context.taskMetrics().createTempShuffleReadMetrics()
     SparkEnv.get.shuffleManager.getReader(task,
-      dependency.shuffleHandle, part.startIndexInParent, part.endIndexInParent, context)
+      dependency.shuffleHandle, part.startIndexInParent, part.endIndexInParent, context, metrics)
       .read(task)
       .asInstanceOf[Iterator[DataElement[(K, C)]]]
   }

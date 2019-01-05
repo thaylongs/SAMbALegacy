@@ -24,6 +24,7 @@ import br.uff.spark.{DataElement, DataflowUtils, TransformationType}
 import scala.collection.mutable.ArrayBuffer
 import scala.language.existentials
 import scala.reflect.ClassTag
+
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
@@ -149,8 +150,10 @@ class CoGroupedRDD[K: ClassTag](
 
       case shuffleDependency: ShuffleDependency[_, _, _] =>
         // Read map outputs of shuffle
+        val metrics = context.taskMetrics().createTempShuffleReadMetrics()
         val it = SparkEnv.get.shuffleManager
-          .getReader(task, shuffleDependency.shuffleHandle, split.index, split.index + 1, context)
+          .getReader(
+            task, shuffleDependency.shuffleHandle, split.index, split.index + 1, context, metrics)
           .read(task)
         rddIterators += ((it.asInstanceOf[Iterator[DataElement[Product2[K, Any]]]], depNum))
     }

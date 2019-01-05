@@ -43,7 +43,7 @@ import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
 import org.apache.spark.network.client.{RpcResponseCallback, TransportClient}
 import org.apache.spark.network.netty.{NettyBlockTransferService, SparkTransportConf}
 import org.apache.spark.network.server.{NoOpRpcHandler, TransportServer, TransportServerBootstrap}
-import org.apache.spark.network.shuffle.{BlockFetchingListener, TempFileManager}
+import org.apache.spark.network.shuffle.{BlockFetchingListener, DownloadFileManager}
 import org.apache.spark.network.shuffle.protocol.{BlockTransferMessage, RegisterExecutor}
 import org.apache.spark.network.util.TransportConf
 import org.apache.spark.rpc.RpcEnv
@@ -124,7 +124,7 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
       .set("spark.storage.unrollMemoryThreshold", "512")
 
     rpcEnv = RpcEnv.create("test", "localhost", 0, conf, securityMgr)
-    conf.set("spark.driver.port", rpcEnv.address.port.toString)
+    conf.set(DRIVER_PORT, rpcEnv.address.port)
 
     // Mock SparkContext to reduce the memory usage of tests. It's fine since the only reason we
     // need to create a SparkContext is to initialize LiveListenerBus.
@@ -574,7 +574,7 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
       "list1",
       StorageLevel.MEMORY_ONLY,
       ClassTag.Any,
-      () => throw new AssertionError("attempted to compute locally")).isLeft)
+      () => fail("attempted to compute locally")).isLeft)
   }
 
   test("in-memory LRU storage") {
@@ -1377,8 +1377,8 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
     val (server, shufflePort) = Utils.startServiceOnPort(candidatePort,
       newShuffleServer, conf, "ShuffleServer")
 
-    conf.set("spark.shuffle.service.enabled", "true")
-    conf.set("spark.shuffle.service.port", shufflePort.toString)
+    conf.set(SHUFFLE_SERVICE_ENABLED.key, "true")
+    conf.set(SHUFFLE_SERVICE_PORT.key, shufflePort.toString)
     conf.set(SHUFFLE_REGISTRATION_TIMEOUT.key, "40")
     conf.set(SHUFFLE_REGISTRATION_MAX_ATTEMPTS.key, "1")
     var e = intercept[SparkException] {
@@ -1422,9 +1422,22 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
     assert(mockBlockTransferService.tempFileManager === store.remoteBlockTempFileManager)
   }
 
+  test("query locations of blockIds") {
+    val mockBlockManagerMaster = mock(classOf[BlockManagerMaster])
+    val blockLocations = Seq(BlockManagerId("1", "host1", 100), BlockManagerId("2", "host2", 200))
+    when(mockBlockManagerMaster.getLocations(mc.any[Array[BlockId]]))
+      .thenReturn(Array(blockLocations))
+    val env = mock(classOf[SparkEnv])
+
+    val blockIds: Array[BlockId] = Array(StreamBlockId(1, 2))
+    val locs = BlockManager.blockIdsToLocations(blockIds, env, mockBlockManagerMaster)
+    val expectedLocs = Seq("executor_host1_1", "executor_host2_2")
+    assert(locs(blockIds(0)) == expectedLocs)
+  }
+
   class MockBlockTransferService(val maxFailures: Int) extends BlockTransferService {
     var numCalls = 0
-    var tempFileManager: TempFileManager = null
+    var tempFileManager: DownloadFileManager = null
 
     override def init(blockDataManager: BlockDataManager): Unit = {}
 
@@ -1434,7 +1447,7 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
         execId: String,
         blockIds: Array[String],
         listener: BlockFetchingListener,
-        tempFileManager: TempFileManager): Unit = {
+        tempFileManager: DownloadFileManager): Unit = {
       listener.onBlockFetchSuccess("mockBlockId", new NioManagedBuffer(ByteBuffer.allocate(1)))
     }
 
@@ -1461,7 +1474,7 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
         port: Int,
         execId: String,
         blockId: String,
-        tempFileManager: TempFileManager): ManagedBuffer = {
+        tempFileManager: DownloadFileManager): ManagedBuffer = {
       numCalls += 1
       this.tempFileManager = tempFileManager
       if (numCalls <= maxFailures) {

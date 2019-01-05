@@ -24,6 +24,7 @@ import br.uff.spark.DataElement
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
+
 import org.apache.spark.Dependency
 import org.apache.spark.OneToOneDependency
 import org.apache.spark.Partition
@@ -110,9 +111,14 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
             .asInstanceOf[Iterator[DataElement[Product2[K, V]]]].foreach(op)
 
         case shuffleDependency: ShuffleDependency[_, _, _] =>
+          val metrics = context.taskMetrics().createTempShuffleReadMetrics()
           val iter = SparkEnv.get.shuffleManager
             .getReader(task,
-              shuffleDependency.shuffleHandle, partition.index, partition.index + 1, context)
+              shuffleDependency.shuffleHandle,
+              partition.index,
+              partition.index + 1,
+              context,
+              metrics)
             .read(task)
           iter.asInstanceOf[Iterator[DataElement[Product2[K, V]]]].foreach(op)
       }

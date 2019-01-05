@@ -2,7 +2,7 @@ package br.uff.spark
 
 import java.io.Serializable
 import java.util
-import java.util.{Random, UUID}
+import java.util.{Objects, Random, UUID}
 
 import br.uff.spark.schema.DefaultSchema
 import com.fasterxml.uuid.Generators
@@ -168,4 +168,17 @@ class DataElement[T](var value: T, var task: Task, var ignore: Boolean = false) 
   }
 
   override def toString = s"DataElement($id, $value, $task, $ignore)"
+
+  override def hashCode(): Int = {
+    if(value!=null)
+      return this.value.hashCode()
+    return -1
+  }
+
+  override def equals(o: Any): Boolean = {
+    if(o != null && o.isInstanceOf[DataElement[Any]]){
+      return Objects.equals(this.value, o.asInstanceOf[DataElement[Any]].value)
+    }
+    return false
+  }
 }

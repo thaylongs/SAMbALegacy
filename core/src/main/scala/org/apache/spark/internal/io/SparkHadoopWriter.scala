@@ -28,6 +28,7 @@ import org.apache.hadoop.fs.FileSystem
 import org.apache.hadoop.mapred._
 import org.apache.hadoop.mapreduce.{TaskType, JobContext => NewJobContext, OutputFormat => NewOutputFormat, RecordWriter => NewRecordWriter, TaskAttemptContext => NewTaskAttemptContext, TaskAttemptID => NewTaskAttemptID}
 import org.apache.hadoop.mapreduce.task.{TaskAttemptContextImpl => NewTaskAttemptContextImpl}
+
 import org.apache.spark.{SerializableWritable, SparkConf, SparkException, TaskContext}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.internal.Logging
@@ -74,13 +75,16 @@ object SparkHadoopWriter extends Logging {
     // Try to write all RDD partitions as a Hadoop OutputFormat.
     try {
       val ret = sparkContext.runJob(rdd, (context: TaskContext, iter: Iterator[DataElement[(K, V)]]) => {
+        // SPARK-24552: Generate a unique "attempt ID" based on the stage and task attempt numbers.
+        // Assumes that there won't be more than Short.MaxValue attempts, at least not concurrently.
+        val attemptId = (context.stageAttemptNumber << 16) | context.attemptNumber
         executeTask(
           context = context,
           config = config,
           jobTrackerId = jobTrackerId,
           commitJobId = commitJobId,
           sparkPartitionId = context.partitionId,
-          sparkAttemptNumber = context.attemptNumber,
+          sparkAttemptNumber = attemptId,
           committer = committer,
           iterator = iter)
       })
@@ -250,7 +254,7 @@ class HadoopMapRedWriteConfigUtil[K, V: ClassTag](conf: SerializableJobConf)
   private def getOutputFormat(): OutputFormat[K, V] = {
     require(outputFormat != null, "Must call initOutputFormat first.")
 
-    outputFormat.newInstance()
+    outputFormat.getConstructor().newInstance()
   }
 
   // --------------------------------------------------------------------------
@@ -373,7 +377,7 @@ class HadoopMapReduceWriteConfigUtil[K, V: ClassTag](conf: SerializableConfigura
   private def getOutputFormat(): NewOutputFormat[K, V] = {
     require(outputFormat != null, "Must call initOutputFormat first.")
 
-    outputFormat.newInstance()
+    outputFormat.getConstructor().newInstance()
   }
 
   // --------------------------------------------------------------------------

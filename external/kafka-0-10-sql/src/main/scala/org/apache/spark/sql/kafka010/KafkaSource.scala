@@ -130,7 +130,7 @@ private[kafka010] class KafkaSource(
     metadataLog.get(0).getOrElse {
       val offsets = startingOffsets match {
         case EarliestOffsetRangeLimit => KafkaSourceOffset(kafkaReader.fetchEarliestOffsets())
-        case LatestOffsetRangeLimit => KafkaSourceOffset(kafkaReader.fetchLatestOffsets())
+        case LatestOffsetRangeLimit => KafkaSourceOffset(kafkaReader.fetchLatestOffsets(None))
         case SpecificOffsetRangeLimit(p) => kafkaReader.fetchSpecificOffsets(p, reportDataLoss)
       }
       metadataLog.add(0, offsets)
@@ -148,7 +148,8 @@ private[kafka010] class KafkaSource(
     // Make sure initialPartitionOffsets is initialized
     initialPartitionOffsets
 
-    val latest = kafkaReader.fetchLatestOffsets()
+    val latest = kafkaReader.fetchLatestOffsets(
+      currentPartitionOffsets.orElse(Some(initialPartitionOffsets)))
     val offsets = maxOffsetsPerTrigger match {
       case None =>
         latest
@@ -215,7 +216,7 @@ private[kafka010] class KafkaSource(
     }
     if (start.isDefined && start.get == end) {
       return sqlContext.internalCreateDataFrame(
-        sqlContext.sparkContext.emptyRDD, schema, isStreaming = true)
+        sqlContext.sparkContext.emptyRDD[InternalRow].setName("empty"), schema, isStreaming = true)
     }
     val fromPartitionOffsets = start match {
       case Some(prevBatchEndOffset) =>
@@ -299,7 +300,7 @@ private[kafka010] class KafkaSource(
     logInfo("GetBatch generating RDD of offset range: " +
       offsetRanges.sortBy(_.topicPartition.toString).mkString(", "))
 
-    sqlContext.internalCreateDataFrame(rdd, schema, isStreaming = true)
+    sqlContext.internalCreateDataFrame(rdd.setName("kafka"), schema, isStreaming = true)
   }
 
   /** Stop this source and free any resources it has allocated. */

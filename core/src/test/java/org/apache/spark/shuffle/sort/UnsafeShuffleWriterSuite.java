@@ -165,7 +165,8 @@ public class UnsafeShuffleWriterSuite {
       new SerializedShuffleHandle<>(0, 1, shuffleDep),
       0, // map id
       taskContext,
-      conf
+      conf,
+      taskContext.taskMetrics().shuffleWriteMetrics()
     );
   }
 
@@ -189,14 +190,14 @@ public class UnsafeShuffleWriterSuite {
         if (conf.getBoolean("spark.shuffle.compress", true)) {
           in = CompressionCodec$.MODULE$.createCodec(conf).compressedInputStream(in);
         }
-        DeserializationStream recordsStream = serializer.newInstance().deserializeStream(in);
-        Iterator<Tuple2<Object, Object>> records = recordsStream.asKeyValueIterator();
-        while (records.hasNext()) {
-          Tuple2<Object, Object> record = records.next();
-          assertEquals(i, hashPartitioner.getPartition(record._1()));
-          recordsList.add((DataElement<Tuple2<Object, Object>>) record._2());
+        try (DeserializationStream recordsStream = serializer.newInstance().deserializeStream(in)) {
+          Iterator<Tuple2<Object, Object>> records = recordsStream.asKeyValueIterator();
+          while (records.hasNext()) {
+            Tuple2<Object, Object> record = records.next();
+            assertEquals(i, hashPartitioner.getPartition(record._1()));
+            recordsList.add((DataElement<Tuple2<Object, Object>>) record._2());
+          }
         }
-        recordsStream.close();
         startOffset += partitionSize;
       }
     }
@@ -237,6 +238,7 @@ public class UnsafeShuffleWriterSuite {
     final Option<MapStatus> mapStatus = writer.stop(true);
     assertTrue(mapStatus.isDefined());
     assertTrue(mergedOutputFile.exists());
+    assertEquals(0, spillFilesCreated.size());
     assertArrayEquals(new long[NUM_PARTITITONS], partitionSizesInMergedFile);
     assertEquals(0, taskMetrics.shuffleWriteMetrics().recordsWritten());
     assertEquals(0, taskMetrics.shuffleWriteMetrics().bytesWritten());
@@ -327,10 +329,7 @@ public class UnsafeShuffleWriterSuite {
 
     assertEquals(sumOfPartitionSizes, mergedOutputFile.length());
 
-    assertEquals(
-            HashMultiset.create(dataToWrite.stream().map(i->i.value()).collect(Collectors.toList())),
-            HashMultiset.create(readRecordsFromFile().stream().map(i->i.value()).collect(Collectors.toList()))
-    );
+    assertEquals(HashMultiset.create(dataToWrite), HashMultiset.create(readRecordsFromFile()));
     assertSpillFilesWereCleanedUp();
     ShuffleWriteMetrics shuffleWriteMetrics = taskMetrics.shuffleWriteMetrics();
     assertEquals(dataToWrite.size(), shuffleWriteMetrics.recordsWritten());
@@ -512,58 +511,62 @@ public class UnsafeShuffleWriterSuite {
     assertSpillFilesWereCleanedUp();
   }
 
-//  @Test by thaylon
-//  public void testPeakMemoryUsed() throws Exception {
-//    final long recordLengthBytes = 8;
-//    final long pageSizeBytes = 256;
-//    final long numRecordsPerPage = pageSizeBytes / recordLengthBytes;
-//    taskMemoryManager = spy(taskMemoryManager);
-//    when(taskMemoryManager.pageSizeBytes()).thenReturn(pageSizeBytes);
-//    final UnsafeShuffleWriter<Object, Object> writer =
-//      new UnsafeShuffleWriter<>(
-//        blockManager,
-//        shuffleBlockResolver,
-//        taskMemoryManager,
-//        new SerializedShuffleHandle<>(0, 1, shuffleDep),
-//        0, // map id
-//        taskContext,
-//        conf);
-//
-//    // Peak memory should be monotonically increasing. More specifically, every time
-//    // we allocate a new page it should increase by exactly the size of the page.
-//    long previousPeakMemory = writer.getPeakMemoryUsedBytes();
-//    long newPeakMemory;
-//    try {
-//      for (int i = 0; i < numRecordsPerPage * 10; i++) {
-//        writer.insertRecordIntoSorter(DataElement.of(new Tuple2<Object, Object>(1, 1)));
-//        newPeakMemory = writer.getPeakMemoryUsedBytes();
-//        if (i % numRecordsPerPage == 0) {
-//          // The first page is allocated in constructor, another page will be allocated after
-//          // every numRecordsPerPage records (peak memory should change).
-//          assertEquals(previousPeakMemory + pageSizeBytes, newPeakMemory);
-//        } else {
-//          assertEquals(previousPeakMemory, newPeakMemory);
-//        }
-//        previousPeakMemory = newPeakMemory;
-//      }
-//
-//      // Spilling should not change peak memory
-//      writer.forceSorterToSpill();
-//      newPeakMemory = writer.getPeakMemoryUsedBytes();
-//      assertEquals(previousPeakMemory, newPeakMemory);
-//      for (int i = 0; i < numRecordsPerPage; i++) {
-//        writer.insertRecordIntoSorter(DataElement.of(new Tuple2<Object, Object>(1, 1)));
-//      }
-//      newPeakMemory = writer.getPeakMemoryUsedBytes();
-//      assertEquals(previousPeakMemory, newPeakMemory);
-//
-//      // Closing the writer should not change peak memory
-//      writer.closeAndWriteOutput();
-//      newPeakMemory = writer.getPeakMemoryUsedBytes();
-//      assertEquals(previousPeakMemory, newPeakMemory);
-//    } finally {
-//      writer.stop(false);
-//    }
-//  }
+  /* Commented by SAMbA until we can estimate the size of Data Collection
+
+  @Test
+  public void testPeakMemoryUsed() throws Exception {
+    final long recordLengthBytes = 8;
+    final long pageSizeBytes = 256;
+    final long numRecordsPerPage = pageSizeBytes / recordLengthBytes;
+    taskMemoryManager = spy(taskMemoryManager);
+    when(taskMemoryManager.pageSizeBytes()).thenReturn(pageSizeBytes);
+    final UnsafeShuffleWriter<Object, Object> writer =
+      new UnsafeShuffleWriter<>(
+        blockManager,
+        shuffleBlockResolver,
+        taskMemoryManager,
+        new SerializedShuffleHandle<>(0, 1, shuffleDep),
+        0, // map id
+        taskContext,
+        conf,
+        taskContext.taskMetrics().shuffleWriteMetrics());
+
+    // Peak memory should be monotonically increasing. More specifically, every time
+    // we allocate a new page it should increase by exactly the size of the page.
+    long previousPeakMemory = writer.getPeakMemoryUsedBytes();
+    long newPeakMemory;
+    try {
+      for (int i = 0; i < numRecordsPerPage * 10; i++) {
+        writer.insertRecordIntoSorter(DataElement.of(new Tuple2<Object, Object>(1, 1)));
+        newPeakMemory = writer.getPeakMemoryUsedBytes();
+        if (i % numRecordsPerPage == 0) {
+          // The first page is allocated in constructor, another page will be allocated after
+          // every numRecordsPerPage records (peak memory should change).
+          assertEquals(previousPeakMemory + pageSizeBytes, newPeakMemory);
+        } else {
+          assertEquals(previousPeakMemory, newPeakMemory);
+        }
+        previousPeakMemory = newPeakMemory;
+      }
+
+      // Spilling should not change peak memory
+      writer.forceSorterToSpill();
+      newPeakMemory = writer.getPeakMemoryUsedBytes();
+      assertEquals(previousPeakMemory, newPeakMemory);
+      for (int i = 0; i < numRecordsPerPage; i++) {
+        writer.insertRecordIntoSorter(DataElement.of(new Tuple2<Object, Object>(1, 1)));
+      }
+      newPeakMemory = writer.getPeakMemoryUsedBytes();
+      assertEquals(previousPeakMemory, newPeakMemory);
+
+      // Closing the writer should not change peak memory
+      writer.closeAndWriteOutput();
+      newPeakMemory = writer.getPeakMemoryUsedBytes();
+      assertEquals(previousPeakMemory, newPeakMemory);
+    } finally {
+      writer.stop(false);
+    }
+  }
+  */
 
 }

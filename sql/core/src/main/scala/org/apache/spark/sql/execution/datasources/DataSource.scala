@@ -34,6 +34,7 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.util.CaseInsensitiveMap
 import org.apache.spark.sql.execution.SparkPlan
+import org.apache.spark.sql.execution.command.DataWritingCommand
 import org.apache.spark.sql.execution.datasources.csv.CSVFileFormat
 import org.apache.spark.sql.execution.datasources.jdbc.JdbcRelationProvider
 import org.apache.spark.sql.execution.datasources.json.JsonFileFormat
@@ -121,21 +122,14 @@ case class DataSource(
    *     be any further inference in any triggers.
    *
    * @param format the file format object for this DataSource
-   * @param fileIndex optional [[InMemoryFileIndex]] for getting partition schema and file list
+   * @param getFileIndex [[InMemoryFileIndex]] for getting partition schema and file list
    * @return A pair of the data schema (excluding partition columns) and the schema of the partition
    *         columns.
    */
   private def getOrInferFileFormatSchema(
       format: FileFormat,
-      fileIndex: Option[InMemoryFileIndex] = None): (StructType, StructType) = {
-    // The operations below are expensive therefore try not to do them if we don't need to, e.g.,
-    // in streaming mode, we have already inferred and registered partition columns, we will
-    // never have to materialize the lazy val below
-    lazy val tempFileIndex = fileIndex.getOrElse {
-      val globbedPaths =
-        checkAndGlobPathIfNecessary(checkEmptyGlobPath = false, checkFilesExist = false)
-      createInMemoryFileIndex(globbedPaths)
-    }
+      getFileIndex: () => InMemoryFileIndex): (StructType, StructType) = {
+    lazy val tempFileIndex = getFileIndex()
 
     val partitionSchema = if (partitionColumns.isEmpty) {
       // Try to infer partitioning, because no DataSource in the read path provides the partitioning
@@ -203,7 +197,7 @@ case class DataSource(
 
   /** Returns the name and schema of the source that can be used to continually read data. */
   private def sourceSchema(): SourceInfo = {
-    providingClass.newInstance() match {
+    providingClass.getConstructor().newInstance() match {
       case s: StreamSourceProvider =>
         val (name, schema) = s.sourceSchema(
           sparkSession.sqlContext, userSpecifiedSchema, className, caseInsensitiveOptions)
@@ -235,7 +229,15 @@ case class DataSource(
               "you may be able to create a static DataFrame on that directory with " +
               "'spark.read.load(directory)' and infer schema from it.")
         }
-        val (dataSchema, partitionSchema) = getOrInferFileFormatSchema(format)
+
+        val (dataSchema, partitionSchema) = getOrInferFileFormatSchema(format, () => {
+          // The operations below are expensive therefore try not to do them if we don't need to,
+          // e.g., in streaming mode, we have already inferred and registered partition columns,
+          // we will never have to materialize the lazy val below
+          val globbedPaths =
+            checkAndGlobPathIfNecessary(checkEmptyGlobPath = false, checkFilesExist = false)
+          createInMemoryFileIndex(globbedPaths)
+        })
         SourceInfo(
           s"FileSource[$path]",
           StructType(dataSchema ++ partitionSchema),
@@ -249,7 +251,7 @@ case class DataSource(
 
   /** Returns a source that can be used to continually read data. */
   def createSource(metadataPath: String): Source = {
-    providingClass.newInstance() match {
+    providingClass.getConstructor().newInstance() match {
       case s: StreamSourceProvider =>
         s.createSource(
           sparkSession.sqlContext,
@@ -278,7 +280,7 @@ case class DataSource(
 
   /** Returns a sink that can be used to continually write data. */
   def createSink(outputMode: OutputMode): Sink = {
-    providingClass.newInstance() match {
+    providingClass.getConstructor().newInstance() match {
       case s: StreamSinkProvider =>
         s.createSink(sparkSession.sqlContext, caseInsensitiveOptions, partitionColumns, outputMode)
 
@@ -309,7 +311,7 @@ case class DataSource(
    *                        that files already exist, we don't need to check them again.
    */
   def resolveRelation(checkFilesExist: Boolean = true): BaseRelation = {
-    val relation = (providingClass.newInstance(), userSpecifiedSchema) match {
+    val relation = (providingClass.getConstructor().newInstance(), userSpecifiedSchema) match {
       // TODO: Throw when too much is given.
       case (dataSource: SchemaRelationProvider, Some(schema)) =>
         dataSource.createRelation(sparkSession.sqlContext, caseInsensitiveOptions, schema)
@@ -369,7 +371,7 @@ case class DataSource(
         } else {
           val index = createInMemoryFileIndex(globbedPaths)
           val (resultDataSchema, resultPartitionSchema) =
-            getOrInferFileFormatSchema(format, Some(index))
+            getOrInferFileFormatSchema(format, () => index)
           (index, resultDataSchema, resultPartitionSchema)
         }
 
@@ -396,6 +398,7 @@ case class DataSource(
           hs.partitionSchema.map(_.name),
           "in the partition schema",
           equality)
+        DataSourceUtils.verifyReadSchema(hs.fileFormat, hs.dataSchema)
       case _ =>
         SchemaUtils.checkColumnNameDuplication(
           relation.schema.map(_.name),
@@ -449,7 +452,7 @@ case class DataSource(
       mode = mode,
       catalogTable = catalogTable,
       fileIndex = fileIndex,
-      outputColumns = data.output)
+      outputColumnNames = data.output.map(_.name))
   }
 
   /**
@@ -459,9 +462,9 @@ case class DataSource(
    * @param mode The save mode for this writing.
    * @param data The input query plan that produces the data to be written. Note that this plan
    *             is analyzed and optimized.
-   * @param outputColumns The original output columns of the input query plan. The optimizer may not
-   *                      preserve the output column's names' case, so we need this parameter
-   *                      instead of `data.output`.
+   * @param outputColumnNames The original output column names of the input query plan. The
+   *                          optimizer may not preserve the output column's names' case, so we need
+   *                          this parameter instead of `data.output`.
    * @param physicalPlan The physical plan of the input query plan. We should run the writing
    *                     command with this physical plan instead of creating a new physical plan,
    *                     so that the metrics can be correctly linked to the given physical plan and
@@ -470,13 +473,14 @@ case class DataSource(
   def writeAndRead(
       mode: SaveMode,
       data: LogicalPlan,
-      outputColumns: Seq[Attribute],
+      outputColumnNames: Seq[String],
       physicalPlan: SparkPlan): BaseRelation = {
+    val outputColumns = DataWritingCommand.logicalPlanOutputWithNames(data, outputColumnNames)
     if (outputColumns.map(_.dataType).exists(_.isInstanceOf[CalendarIntervalType])) {
       throw new AnalysisException("Cannot save interval data type into external storage.")
     }
 
-    providingClass.newInstance() match {
+    providingClass.getConstructor().newInstance() match {
       case dataSource: CreatableRelationProvider =>
         dataSource.createRelation(
           sparkSession.sqlContext, mode, caseInsensitiveOptions, Dataset.ofRows(sparkSession, data))
@@ -494,7 +498,9 @@ case class DataSource(
               s"Unable to resolve $name given [${data.output.map(_.name).mkString(", ")}]")
           }
         }
-        val resolved = cmd.copy(partitionColumns = resolvedPartCols, outputColumns = outputColumns)
+        val resolved = cmd.copy(
+          partitionColumns = resolvedPartCols,
+          outputColumnNames = outputColumnNames)
         resolved.run(sparkSession, physicalPlan)
         // Replace the schema with that of the DataFrame we just wrote out to avoid re-inferring
         copy(userSpecifiedSchema = Some(outputColumns.toStructType.asNullable)).resolveRelation()
@@ -511,7 +517,7 @@ case class DataSource(
       throw new AnalysisException("Cannot save interval data type into external storage.")
     }
 
-    providingClass.newInstance() match {
+    providingClass.getConstructor().newInstance() match {
       case dataSource: CreatableRelationProvider =>
         SaveIntoDataSourceCommand(data, dataSource, caseInsensitiveOptions, mode)
       case format: FileFormat =>
@@ -613,6 +619,8 @@ object DataSource extends Logging {
       case name if name.equalsIgnoreCase("orc") &&
           conf.getConf(SQLConf.ORC_IMPLEMENTATION) == "hive" =>
         "org.apache.spark.sql.hive.orc.OrcFileFormat"
+      case "com.databricks.spark.avro" if conf.replaceDatabricksSparkAvroEnabled =>
+        "org.apache.spark.sql.avro.AvroFileFormat"
       case name => name
     }
     val provider2 = s"$provider1.DefaultSource"
@@ -635,11 +643,17 @@ object DataSource extends Logging {
                     "Please use the native ORC data source by setting 'spark.sql.orc.impl' to " +
                     "'native'")
                 } else if (provider1.toLowerCase(Locale.ROOT) == "avro" ||
-                  provider1 == "com.databricks.spark.avro") {
+                  provider1 == "com.databricks.spark.avro" ||
+                  provider1 == "org.apache.spark.sql.avro") {
                   throw new AnalysisException(
-                    s"Failed to find data source: ${provider1.toLowerCase(Locale.ROOT)}. " +
-                    "Please find an Avro package at " +
-                    "http://spark.apache.org/third-party-projects.html")
+                    s"Failed to find data source: $provider1. Avro is built-in but external data " +
+                    "source module since Spark 2.4. Please deploy the application as per " +
+                    "the deployment section of \"Apache Avro Data Source Guide\".")
+                } else if (provider1.toLowerCase(Locale.ROOT) == "kafka") {
+                  throw new AnalysisException(
+                    s"Failed to find data source: $provider1. Please deploy the application as " +
+                    "per the deployment section of " +
+                    "\"Structured Streaming + Kafka Integration Guide\".")
                 } else {
                   throw new ClassNotFoundException(
                     s"Failed to find data source: $provider1. Please find packages at " +

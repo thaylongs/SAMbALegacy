@@ -24,6 +24,7 @@ import java.util.Properties
 import br.uff.spark.DataElement
 
 import scala.language.existentials
+
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
@@ -50,6 +51,8 @@ import org.apache.spark.shuffle.ShuffleWriter
  * @param jobId id of the job this task belongs to
  * @param appId id of the app this task belongs to
  * @param appAttemptId attempt id of the app this task belongs to
+ * @param isBarrier whether this task belongs to a barrier stage. Spark must launch all the tasks
+ *                  at the same time for a barrier stage.
  */
 private[spark] class ShuffleMapTask(
     stageId: Int,
@@ -61,9 +64,10 @@ private[spark] class ShuffleMapTask(
     serializedTaskMetrics: Array[Byte],
     jobId: Option[Int] = None,
     appId: Option[String] = None,
-    appAttemptId: Option[String] = None)
+    appAttemptId: Option[String] = None,
+    isBarrier: Boolean = false)
   extends Task[MapStatus](stageId, stageAttemptId, partition.index, localProperties,
-    serializedTaskMetrics, jobId, appId, appAttemptId)
+    serializedTaskMetrics, jobId, appId, appAttemptId, isBarrier)
   with Logging {
 
   /** A constructor used only in test suites. This does not require passing in an RDD. */
@@ -90,24 +94,7 @@ private[spark] class ShuffleMapTask(
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
-    var writer: ShuffleWriter[Any, Any] = null
-    try {
-      val manager = SparkEnv.get.shuffleManager
-      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context, dep.taskOfRDDWhichRequestThis)
-      writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: DataElement[Product2[Any, Any]]]])
-      writer.stop(success = true).get
-    } catch {
-      case e: Exception =>
-        try {
-          if (writer != null) {
-            writer.stop(success = false)
-          }
-        } catch {
-          case e: Exception =>
-            log.debug("Could not stop writer", e)
-        }
-        throw e
-    }
+    dep.shuffleWriterProcessor.write(rdd, dep, partitionId, context, partition)
   }
 
   override def preferredLocations: Seq[TaskLocation] = preferredLocs

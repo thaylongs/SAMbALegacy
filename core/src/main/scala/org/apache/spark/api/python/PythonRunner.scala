@@ -20,13 +20,18 @@ package org.apache.spark.api.python
 import java.io._
 import java.net._
 import java.nio.charset.StandardCharsets
+import java.nio.charset.StandardCharsets.UTF_8
 import java.util.concurrent.atomic.AtomicBoolean
 
 import br.uff.spark.DataElement
 
 import scala.collection.JavaConverters._
+
 import org.apache.spark._
 import org.apache.spark.internal.Logging
+import org.apache.spark.internal.config.EXECUTOR_CORES
+import org.apache.spark.internal.config.Python._
+import org.apache.spark.security.SocketAuthHelper
 import org.apache.spark.util._
 
 
@@ -41,6 +46,7 @@ private[spark] object PythonEvalType {
   val SQL_SCALAR_PANDAS_UDF = 200
   val SQL_GROUPED_MAP_PANDAS_UDF = 201
   val SQL_GROUPED_AGG_PANDAS_UDF = 202
+  val SQL_WINDOW_AGG_PANDAS_UDF = 203
 
   def toString(pythonEvalType: Int): String = pythonEvalType match {
     case NON_UDF => "NON_UDF"
@@ -48,6 +54,7 @@ private[spark] object PythonEvalType {
     case SQL_SCALAR_PANDAS_UDF => "SQL_SCALAR_PANDAS_UDF"
     case SQL_GROUPED_MAP_PANDAS_UDF => "SQL_GROUPED_MAP_PANDAS_UDF"
     case SQL_GROUPED_AGG_PANDAS_UDF => "SQL_GROUPED_AGG_PANDAS_UDF"
+    case SQL_WINDOW_AGG_PANDAS_UDF => "SQL_WINDOW_AGG_PANDAS_UDF"
   }
 }
 
@@ -59,13 +66,18 @@ private[spark] object PythonEvalType {
  */
 private[spark] abstract class BasePythonRunner[IN, OUT](
     funcs: Seq[ChainedPythonFunctions],
-    bufferSize: Int,
-    reuseWorker: Boolean,
     evalType: Int,
     argOffsets: Array[Array[Int]])
   extends Logging {
 
   require(funcs.length == argOffsets.length, "argOffsets should have the same length as funcs")
+
+  private val conf = SparkEnv.get.conf
+  private val bufferSize = conf.getInt("spark.buffer.size", 65536)
+  private val reuseWorker = conf.get(PYTHON_WORKER_REUSE)
+  // each python worker gets an equal part of the allocation. the worker pool will grow to the
+  // number of concurrent tasks, which is determined by the number of cores in this executor.
+  private val memoryMb = conf.get(PYSPARK_EXECUTOR_MEMORY).map(_ / conf.get(EXECUTOR_CORES))
 
   // All the Python functions should have the same exec, version and envvars.
   protected val envVars = funcs.head.funcs.head.envVars
@@ -74,6 +86,12 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
 
   // TODO: support accumulator in multiple UDF
   protected val accumulator = funcs.head.funcs.head.accumulator
+
+  // Expose a ServerSocket to support method calls via socket from Python side.
+  private[spark] var serverSocket: Option[ServerSocket] = None
+
+  // Authentication helper used when serving method calls via socket from Python side.
+  private lazy val authHelper = new SocketAuthHelper(conf)
 
   def compute(
       inputIterator: Iterator[DataElement[IN]],
@@ -86,16 +104,21 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
     if (reuseWorker) {
       envVars.put("SPARK_REUSE_WORKER", "1")
     }
+    if (memoryMb.isDefined) {
+      envVars.put("PYSPARK_EXECUTOR_MEMORY_MB", memoryMb.get.toString)
+    }
     val worker: Socket = env.createPythonWorker(pythonExec, envVars.asScala.toMap)
-    // Whether is the worker released into idle pool
-    val released = new AtomicBoolean(false)
+    // Whether is the worker released into idle pool or closed. When any codes try to release or
+    // close a worker, they should use `releasedOrClosed.compareAndSet` to flip the state to make
+    // sure there is only one winner that is going to release or close the worker.
+    val releasedOrClosed = new AtomicBoolean(false)
 
     // Start a thread to feed the process input from our parent's iterator
     val writerThread = newWriterThread(env, worker, inputIterator, partitionIndex, context)
 
-    context.addTaskCompletionListener { _ =>
+    context.addTaskCompletionListener[Unit] { _ =>
       writerThread.shutdownOnTaskCompletion()
-      if (!reuseWorker || !released.get) {
+      if (!reuseWorker || releasedOrClosed.compareAndSet(false, true)) {
         try {
           worker.close()
         } catch {
@@ -112,7 +135,7 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
     val stream = new DataInputStream(new BufferedInputStream(worker.getInputStream, bufferSize))
 
     val stdoutIterator = newReaderIterator(
-      stream, writerThread, startTime, env, worker, released, context)
+      stream, writerThread, startTime, env, worker, releasedOrClosed, context)
     new InterruptibleIterator(context, stdoutIterator)
   }
 
@@ -129,7 +152,7 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
       startTime: Long,
       env: SparkEnv,
       worker: Socket,
-      released: AtomicBoolean,
+      releasedOrClosed: AtomicBoolean,
       context: TaskContext): Iterator[DataElement[OUT]]
 
   /**
@@ -179,11 +202,85 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
         dataOut.writeInt(partitionIndex)
         // Python version of driver
         PythonRDD.writeUTF(pythonVer, dataOut)
+        // Init a ServerSocket to accept method calls from Python side.
+        val isBarrier = context.isInstanceOf[BarrierTaskContext]
+        if (isBarrier) {
+          serverSocket = Some(new ServerSocket(/* port */ 0,
+            /* backlog */ 1,
+            InetAddress.getByName("localhost")))
+          // A call to accept() for ServerSocket shall block infinitely.
+          serverSocket.map(_.setSoTimeout(0))
+          new Thread("accept-connections") {
+            setDaemon(true)
+
+            override def run(): Unit = {
+              while (!serverSocket.get.isClosed()) {
+                var sock: Socket = null
+                try {
+                  sock = serverSocket.get.accept()
+                  // Wait for function call from python side.
+                  sock.setSoTimeout(10000)
+                  authHelper.authClient(sock)
+                  val input = new DataInputStream(sock.getInputStream())
+                  input.readInt() match {
+                    case BarrierTaskContextMessageProtocol.BARRIER_FUNCTION =>
+                      // The barrier() function may wait infinitely, socket shall not timeout
+                      // before the function finishes.
+                      sock.setSoTimeout(0)
+                      barrierAndServe(sock)
+
+                    case _ =>
+                      val out = new DataOutputStream(new BufferedOutputStream(
+                        sock.getOutputStream))
+                      writeUTF(BarrierTaskContextMessageProtocol.ERROR_UNRECOGNIZED_FUNCTION, out)
+                  }
+                } catch {
+                  case e: SocketException if e.getMessage.contains("Socket closed") =>
+                    // It is possible that the ServerSocket is not closed, but the native socket
+                    // has already been closed, we shall catch and silently ignore this case.
+                } finally {
+                  if (sock != null) {
+                    sock.close()
+                  }
+                }
+              }
+            }
+          }.start()
+        }
+        val secret = if (isBarrier) {
+          authHelper.secret
+        } else {
+          ""
+        }
+        // Close ServerSocket on task completion.
+        serverSocket.foreach { server =>
+          context.addTaskCompletionListener[Unit](_ => server.close())
+        }
+        val boundPort: Int = serverSocket.map(_.getLocalPort).getOrElse(0)
+        if (boundPort == -1) {
+          val message = "ServerSocket failed to bind to Java side."
+          logError(message)
+          throw new SparkException(message)
+        } else if (isBarrier) {
+          logDebug(s"Started ServerSocket on port $boundPort.")
+        }
         // Write out the TaskContextInfo
+        dataOut.writeBoolean(isBarrier)
+        dataOut.writeInt(boundPort)
+        val secretBytes = secret.getBytes(UTF_8)
+        dataOut.writeInt(secretBytes.length)
+        dataOut.write(secretBytes, 0, secretBytes.length)
         dataOut.writeInt(context.stageId())
         dataOut.writeInt(context.partitionId())
         dataOut.writeInt(context.attemptNumber())
         dataOut.writeLong(context.taskAttemptId())
+        val localProps = context.getLocalProperties.asScala
+        dataOut.writeInt(localProps.size)
+        localProps.foreach { case (k, v) =>
+          PythonRDD.writeUTF(k, dataOut)
+          PythonRDD.writeUTF(v, dataOut)
+        }
+
         // sparkFilesDir
         PythonRDD.writeUTF(SparkFiles.getRootDirectory(), dataOut)
         // Python includes (*.zip and *.egg files)
@@ -196,19 +293,51 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
         val newBids = broadcastVars.map(_.id).toSet
         // number of different broadcasts
         val toRemove = oldBids.diff(newBids)
-        val cnt = toRemove.size + newBids.diff(oldBids).size
+        val addedBids = newBids.diff(oldBids)
+        val cnt = toRemove.size + addedBids.size
+        val needsDecryptionServer = env.serializerManager.encryptionEnabled && addedBids.nonEmpty
+        dataOut.writeBoolean(needsDecryptionServer)
         dataOut.writeInt(cnt)
-        for (bid <- toRemove) {
-          // remove the broadcast from worker
-          dataOut.writeLong(- bid - 1)  // bid >= 0
-          oldBids.remove(bid)
+        def sendBidsToRemove(): Unit = {
+          for (bid <- toRemove) {
+            // remove the broadcast from worker
+            dataOut.writeLong(-bid - 1) // bid >= 0
+            oldBids.remove(bid)
+          }
         }
-        for (broadcast <- broadcastVars) {
-          if (!oldBids.contains(broadcast.id)) {
+        if (needsDecryptionServer) {
+          // if there is encryption, we setup a server which reads the encrypted files, and sends
+          // the decrypted data to python
+          val idsAndFiles = broadcastVars.flatMap { broadcast =>
+            if (!oldBids.contains(broadcast.id)) {
+              Some((broadcast.id, broadcast.value.path))
+            } else {
+              None
+            }
+          }
+          val server = new EncryptedPythonBroadcastServer(env, idsAndFiles)
+          dataOut.writeInt(server.port)
+          logTrace(s"broadcast decryption server setup on ${server.port}")
+          PythonRDD.writeUTF(server.secret, dataOut)
+          sendBidsToRemove()
+          idsAndFiles.foreach { case (id, _) =>
             // send new broadcast
-            dataOut.writeLong(broadcast.id)
-            PythonRDD.writeUTF(broadcast.value.path, dataOut)
-            oldBids.add(broadcast.id)
+            dataOut.writeLong(id)
+            oldBids.add(id)
+          }
+          dataOut.flush()
+          logTrace("waiting for python to read decrypted broadcast data from server")
+          server.waitTillBroadcastDataSent()
+          logTrace("done sending decrypted data to python")
+        } else {
+          sendBidsToRemove()
+          for (broadcast <- broadcastVars) {
+            if (!oldBids.contains(broadcast.id)) {
+              // send new broadcast
+              dataOut.writeLong(broadcast.id)
+              PythonRDD.writeUTF(broadcast.value.path, dataOut)
+              oldBids.add(broadcast.id)
+            }
           }
         }
         dataOut.flush()
@@ -235,6 +364,30 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
           }
       }
     }
+
+    /**
+     * Gateway to call BarrierTaskContext.barrier().
+     */
+    def barrierAndServe(sock: Socket): Unit = {
+      require(serverSocket.isDefined, "No available ServerSocket to redirect the barrier() call.")
+
+      val out = new DataOutputStream(new BufferedOutputStream(sock.getOutputStream))
+      try {
+        context.asInstanceOf[BarrierTaskContext].barrier()
+        writeUTF(BarrierTaskContextMessageProtocol.BARRIER_RESULT_SUCCESS, out)
+      } catch {
+        case e: SparkException =>
+          writeUTF(e.getMessage, out)
+      } finally {
+        out.close()
+      }
+    }
+
+    def writeUTF(str: String, dataOut: DataOutputStream) {
+      val bytes = str.getBytes(UTF_8)
+      dataOut.writeInt(bytes.length)
+      dataOut.write(bytes)
+    }
   }
 
   abstract class ReaderIterator(
@@ -243,7 +396,7 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
       startTime: Long,
       env: SparkEnv,
       worker: Socket,
-      released: AtomicBoolean,
+      releasedOrClosed: AtomicBoolean,
       context: TaskContext)
     extends Iterator[DataElement[OUT]] {
 
@@ -314,9 +467,8 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
       }
       // Check whether the worker is ready to be re-used.
       if (stream.readInt() == SpecialLengths.END_OF_STREAM) {
-        if (reuseWorker) {
+        if (reuseWorker && releasedOrClosed.compareAndSet(false, true)) {
           env.releasePythonWorker(pythonExec, envVars.asScala.toMap, worker)
-          released.set(true)
         }
       }
       eos = true
@@ -346,7 +498,7 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
     extends Thread(s"Worker Monitor for $pythonExec") {
 
     /** How long to wait before killing the python worker if a task cannot be interrupted. */
-    private val taskKillTimeout = env.conf.getTimeAsMs("spark.python.task.killTimeout", "2s")
+    private val taskKillTimeout = env.conf.get(PYTHON_TASK_KILL_TIMEOUT)
 
     setDaemon(true)
 
@@ -377,20 +529,17 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
 
 private[spark] object PythonRunner {
 
-  def apply(func: PythonFunction, bufferSize: Int, reuseWorker: Boolean): PythonRunner = {
-    new PythonRunner(Seq(ChainedPythonFunctions(Seq(func))), bufferSize, reuseWorker)
+  def apply(func: PythonFunction): PythonRunner = {
+    new PythonRunner(Seq(ChainedPythonFunctions(Seq(func))))
   }
 }
 
 /**
  * A helper class to run Python mapPartition in Spark.
  */
-private[spark] class PythonRunner(
-    funcs: Seq[ChainedPythonFunctions],
-    bufferSize: Int,
-    reuseWorker: Boolean)
+private[spark] class PythonRunner(funcs: Seq[ChainedPythonFunctions])
   extends BasePythonRunner[Array[Byte], Array[Byte]](
-    funcs, bufferSize, reuseWorker, PythonEvalType.NON_UDF, Array(Array(0))) {
+    funcs, PythonEvalType.NON_UDF, Array(Array(0))) {
 
   protected override def newWriterThread(
       env: SparkEnv,
@@ -419,9 +568,9 @@ private[spark] class PythonRunner(
       startTime: Long,
       env: SparkEnv,
       worker: Socket,
-      released: AtomicBoolean,
+      releasedOrClosed: AtomicBoolean,
       context: TaskContext): Iterator[DataElement[Array[Byte]]] = {
-    new ReaderIterator(stream, writerThread, startTime, env, worker, released, context) {
+    new ReaderIterator(stream, writerThread, startTime, env, worker, releasedOrClosed, context) {
 
       protected override def read(): DataElement[Array[Byte]] = {
         if (writerThread.exception.isDefined) {
@@ -456,4 +605,10 @@ private[spark] object SpecialLengths {
   val END_OF_STREAM = -4
   val NULL = -5
   val START_ARROW_STREAM = -6
+}
+
+private[spark] object BarrierTaskContextMessageProtocol {
+  val BARRIER_FUNCTION = 1
+  val BARRIER_RESULT_SUCCESS = "success"
+  val ERROR_UNRECOGNIZED_FUNCTION = "Not recognized function call from python side."
 }

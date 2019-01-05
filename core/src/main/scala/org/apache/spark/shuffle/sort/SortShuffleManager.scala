@@ -28,16 +28,16 @@ import org.apache.spark.shuffle._
  * In sort-based shuffle, incoming records are sorted according to their target partition ids, then
  * written to a single map output file. Reducers fetch contiguous regions of this file in order to
  * read their portion of the map output. In cases where the map output data is too large to fit in
- * memory, sorted subsets of the output can are spilled to disk and those on-disk files are merged
+ * memory, sorted subsets of the output can be spilled to disk and those on-disk files are merged
  * to produce the final output file.
  *
  * Sort-based shuffle has two different write paths for producing its map output files:
  *
  *  - Serialized sorting: used when all three of the following conditions hold:
- *    1. The shuffle dependency specifies no aggregation or output ordering.
+ *    1. The shuffle dependency specifies no map-side combine.
  *    2. The shuffle serializer supports relocation of serialized values (this is currently
  *       supported by KryoSerializer and Spark SQL's custom serializers).
- *    3. The shuffle produces fewer than 16777216 output partitions.
+ *    3. The shuffle produces fewer than or equal to 16777216 output partitions.
  *  - Deserialized sorting: used to handle all other cases.
  *
  * -----------------------
@@ -112,13 +112,15 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
    * Called on executors by reduce tasks.
    */
   override def getReader[K, C](
-      task:Task,
+      task: Task,
       handle: ShuffleHandle,
       startPartition: Int,
       endPartition: Int,
-      context: TaskContext): ShuffleReader[K, C] = {
+      context: TaskContext,
+      metrics: ShuffleReadMetricsReporter): ShuffleReader[K, C] = {
     new BlockStoreShuffleReader(
-      handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)
+      handle.asInstanceOf[BaseShuffleHandle[K, _, C]],
+      startPartition, endPartition, context, metrics)
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
@@ -126,7 +128,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       handle: ShuffleHandle,
       mapId: Int,
       context: TaskContext,
-      taskOfRDD:Task): ShuffleWriter[K, V] = {
+      taskOfRDD: Task,
+      metrics: ShuffleWriteMetricsReporter): ShuffleWriter[K, V] = {
     numMapsForShuffle.putIfAbsent(
       handle.shuffleId, handle.asInstanceOf[BaseShuffleHandle[_, _, _]].numMaps)
     val env = SparkEnv.get
@@ -139,15 +142,16 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           unsafeShuffleHandle,
           mapId,
           context,
-          env.conf)
+          env.conf,
+          metrics)
       case bypassMergeSortHandle: BypassMergeSortShuffleHandle[K @unchecked, V @unchecked] =>
         new BypassMergeSortShuffleWriter(
           env.blockManager,
           shuffleBlockResolver.asInstanceOf[IndexShuffleBlockResolver],
           bypassMergeSortHandle,
           mapId,
-          context,
-          env.conf)
+          env.conf,
+          metrics)
       case other: BaseShuffleHandle[K @unchecked, V @unchecked, _] =>
         new SortShuffleWriter(taskOfRDD, shuffleBlockResolver, other, mapId, context)
     }

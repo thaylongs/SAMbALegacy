@@ -22,6 +22,7 @@ import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import com.codahale.metrics.Counter;
 import com.codahale.metrics.MetricSet;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -70,11 +71,14 @@ public class TransportServer implements Closeable {
     this.appRpcHandler = appRpcHandler;
     this.bootstraps = Lists.newArrayList(Preconditions.checkNotNull(bootstraps));
 
+    boolean shouldClose = true;
     try {
       init(hostToBind, portToBind);
-    } catch (RuntimeException e) {
-      JavaUtils.closeQuietly(this);
-      throw e;
+      shouldClose = false;
+    } finally {
+      if (shouldClose) {
+        JavaUtils.closeQuietly(this);
+      }
     }
   }
 
@@ -148,12 +152,16 @@ public class TransportServer implements Closeable {
       channelFuture.channel().close().awaitUninterruptibly(10, TimeUnit.SECONDS);
       channelFuture = null;
     }
-    if (bootstrap != null && bootstrap.group() != null) {
-      bootstrap.group().shutdownGracefully();
+    if (bootstrap != null && bootstrap.config().group() != null) {
+      bootstrap.config().group().shutdownGracefully();
     }
-    if (bootstrap != null && bootstrap.childGroup() != null) {
-      bootstrap.childGroup().shutdownGracefully();
+    if (bootstrap != null && bootstrap.config().childGroup() != null) {
+      bootstrap.config().childGroup().shutdownGracefully();
     }
     bootstrap = null;
+  }
+
+  public Counter getRegisteredConnections() {
+    return context.getRegisteredConnections();
   }
 }

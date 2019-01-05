@@ -106,7 +106,9 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
 
   override def compute(split: Partition, context: TaskContext): Iterator[DataElement[(K, C)]] = {
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
-    SparkEnv.get.shuffleManager.getReader(task,dep.shuffleHandle, split.index, split.index + 1, context)
+    val metrics = context.taskMetrics().createTempShuffleReadMetrics()
+    SparkEnv.get.shuffleManager.getReader(
+      task,dep.shuffleHandle, split.index, split.index + 1, context, metrics)
       .read(task)
       .asInstanceOf[Iterator[DataElement[(K, C)]]]
   }
@@ -115,4 +117,6 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
     super.clearDependencies()
     prev = null
   }
+
+  private[spark] override def isBarrier(): Boolean = false
 }

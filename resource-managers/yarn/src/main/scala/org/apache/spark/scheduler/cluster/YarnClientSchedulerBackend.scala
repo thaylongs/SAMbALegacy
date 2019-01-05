@@ -24,7 +24,7 @@ import org.apache.hadoop.yarn.api.records.YarnApplicationState
 import org.apache.spark.{SparkContext, SparkException}
 import org.apache.spark.deploy.yarn.{Client, ClientArguments, YarnAppReport}
 import org.apache.spark.deploy.yarn.config._
-import org.apache.spark.internal.Logging
+import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.launcher.SparkAppHandle
 import org.apache.spark.scheduler.TaskSchedulerImpl
 
@@ -42,10 +42,10 @@ private[spark] class YarnClientSchedulerBackend(
    * This waits until the application is running.
    */
   override def start() {
-    val driverHost = conf.get("spark.driver.host")
-    val driverPort = conf.get("spark.driver.port")
+    val driverHost = conf.get(config.DRIVER_HOST_ADDRESS)
+    val driverPort = conf.get(config.DRIVER_PORT)
     val hostport = driverHost + ":" + driverPort
-    sc.ui.foreach { ui => conf.set("spark.driver.appUIAddress", ui.webUrl) }
+    sc.ui.foreach { ui => conf.set(DRIVER_APP_UI_ADDRESS, ui.webUrl) }
 
     val argsArrayBuf = new ArrayBuffer[String]()
     argsArrayBuf += ("--arg", hostport)
@@ -111,7 +111,7 @@ private[spark] class YarnClientSchedulerBackend(
     override def run() {
       try {
         val YarnAppReport(_, state, diags) =
-          client.monitorApplication(appId.get, logApplicationReport = true)
+          client.monitorApplication(appId.get, logApplicationReport = false)
         logError(s"YARN application has exited unexpectedly with state $state! " +
           "Check the YARN application logs for more details.")
         diags.foreach { err =>

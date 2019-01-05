@@ -25,7 +25,7 @@ import scala.util.control.{ControlThrowable, NonFatal}
 
 import com.codahale.metrics.{Gauge, MetricRegistry}
 
-import org.apache.spark.internal.Logging
+import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.internal.config._
 import org.apache.spark.metrics.source.Source
 import org.apache.spark.scheduler._
@@ -57,7 +57,8 @@ import org.apache.spark.util.{Clock, SystemClock, ThreadUtils, Utils}
  * a long time to ramp up under heavy workloads.
  *
  * The remove policy is simpler: If an executor has been idle for K seconds, meaning it has not
- * been scheduled to run any tasks, then it is removed.
+ * been scheduled to run any tasks, then it is removed. Note that an executor caching any data
+ * blocks will be removed if it has been idle for more than L seconds.
  *
  * There is no retry logic in either case because we make the assumption that the cluster manager
  * will eventually fulfill all requests it receives asynchronously.
@@ -81,7 +82,12 @@ import org.apache.spark.util.{Clock, SystemClock, ThreadUtils, Utils}
  *     This is used only after the initial backlog timeout is exceeded
  *
  *   spark.dynamicAllocation.executorIdleTimeout (K) -
- *     If an executor has been idle for this duration, remove it
+ *     If an executor without caching any data blocks has been idle for this duration, remove it
+ *
+ *   spark.dynamicAllocation.cachedExecutorIdleTimeout (L) -
+ *     If an executor with caching data blocks has been idle for more than this duration,
+ *     the executor will be removed
+ *
  */
 private[spark] class ExecutorAllocationManager(
     client: ExecutorAllocationClient,
@@ -121,7 +127,7 @@ private[spark] class ExecutorAllocationManager(
   // allocation is only supported for YARN and the default number of cores per executor in YARN is
   // 1, but it might need to be attained differently for different cluster managers
   private val tasksPerExecutorForFullParallelism =
-    conf.getInt("spark.executor.cores", 1) / conf.getInt("spark.task.cpus", 1)
+    conf.get(EXECUTOR_CORES) / conf.getInt("spark.task.cpus", 1)
 
   private val executorAllocationRatio =
     conf.get(DYN_ALLOCATION_EXECUTOR_ALLOCATION_RATIO)
@@ -212,12 +218,12 @@ private[spark] class ExecutorAllocationManager(
     }
     // Require external shuffle service for dynamic allocation
     // Otherwise, we may lose shuffle files when killing executors
-    if (!conf.getBoolean("spark.shuffle.service.enabled", false) && !testing) {
+    if (!conf.get(config.SHUFFLE_SERVICE_ENABLED) && !testing) {
       throw new SparkException("Dynamic allocation of executors requires the external " +
         "shuffle service. You may enable this through spark.shuffle.service.enabled.")
     }
     if (tasksPerExecutorForFullParallelism == 0) {
-      throw new SparkException("spark.executor.cores must not be < spark.task.cpus.")
+      throw new SparkException(s"${EXECUTOR_CORES.key} must not be < spark.task.cpus.")
     }
 
     if (executorAllocationRatio > 1.0 || executorAllocationRatio <= 0.0) {
@@ -488,9 +494,15 @@ private[spark] class ExecutorAllocationManager(
     newExecutorTotal = numExistingExecutors
     if (testing || executorsRemoved.nonEmpty) {
       executorsRemoved.foreach { removedExecutorId =>
+        // If it is a cached block, it uses cachedExecutorIdleTimeoutS for timeout
+        val idleTimeout = if (blockManagerMaster.hasCachedBlocks(removedExecutorId)) {
+          cachedExecutorIdleTimeoutS
+        } else {
+          executorIdleTimeoutS
+        }
         newExecutorTotal -= 1
         logInfo(s"Removing executor $removedExecutorId because it has been idle for " +
-          s"$executorIdleTimeoutS seconds (new desired total will be $newExecutorTotal)")
+          s"$idleTimeout seconds (new desired total will be $newExecutorTotal)")
         executorsPendingToRemove.add(removedExecutorId)
       }
       executorsRemoved

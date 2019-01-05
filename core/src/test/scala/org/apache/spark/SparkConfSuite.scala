@@ -26,8 +26,8 @@ import scala.util.{Random, Try}
 
 import com.esotericsoftware.kryo.Kryo
 
-import org.apache.spark.deploy.history.config._
 import org.apache.spark.internal.config._
+import org.apache.spark.internal.config.History._
 import org.apache.spark.network.util.ByteUnit
 import org.apache.spark.serializer.{JavaSerializer, KryoRegistrator, KryoSerializer}
 import org.apache.spark.util.{ResetSystemProperties, RpcUtils}
@@ -140,6 +140,13 @@ class SparkConfSuite extends SparkFunSuite with LocalSparkContext with ResetSyst
     assert(sc.appName === "My other app")
   }
 
+  test("creating SparkContext with cpus per tasks bigger than cores per executors") {
+    val conf = new SparkConf(false)
+      .set(EXECUTOR_CORES, 1)
+      .set("spark.task.cpus", "2")
+    intercept[SparkException] { sc = new SparkContext(conf) }
+  }
+
   test("nested property names") {
     // This wasn't supported by some external conf parsing libraries
     System.setProperty("spark.test.a", "a")
@@ -227,7 +234,7 @@ class SparkConfSuite extends SparkFunSuite with LocalSparkContext with ResetSyst
 
   test("deprecated configs") {
     val conf = new SparkConf()
-    val newName = "spark.history.fs.update.interval"
+    val newName = UPDATE_INTERVAL_S.key
 
     assert(!conf.contains(newName))
 
@@ -341,6 +348,38 @@ class SparkConfSuite extends SparkFunSuite with LocalSparkContext with ResetSyst
     }
   }
 
+  val defaultIllegalValue = "SomeIllegalValue"
+  val illegalValueTests : Map[String, (SparkConf, String) => Any] = Map(
+    "getTimeAsSeconds" -> (_.getTimeAsSeconds(_)),
+    "getTimeAsSeconds with default" -> (_.getTimeAsSeconds(_, defaultIllegalValue)),
+    "getTimeAsMs" -> (_.getTimeAsMs(_)),
+    "getTimeAsMs with default" -> (_.getTimeAsMs(_, defaultIllegalValue)),
+    "getSizeAsBytes" -> (_.getSizeAsBytes(_)),
+    "getSizeAsBytes with default string" -> (_.getSizeAsBytes(_, defaultIllegalValue)),
+    "getSizeAsBytes with default long" -> (_.getSizeAsBytes(_, 0L)),
+    "getSizeAsKb" -> (_.getSizeAsKb(_)),
+    "getSizeAsKb with default" -> (_.getSizeAsKb(_, defaultIllegalValue)),
+    "getSizeAsMb" -> (_.getSizeAsMb(_)),
+    "getSizeAsMb with default" -> (_.getSizeAsMb(_, defaultIllegalValue)),
+    "getSizeAsGb" -> (_.getSizeAsGb(_)),
+    "getSizeAsGb with default" -> (_.getSizeAsGb(_, defaultIllegalValue)),
+    "getInt" -> (_.getInt(_, 0)),
+    "getLong" -> (_.getLong(_, 0L)),
+    "getDouble" -> (_.getDouble(_, 0.0)),
+    "getBoolean" -> (_.getBoolean(_, false))
+  )
+
+  illegalValueTests.foreach { case (name, getValue) =>
+    test(s"SPARK-24337: $name throws an useful error message with key name") {
+      val key = "SomeKey"
+      val conf = new SparkConf()
+      conf.set(key, "SomeInvalidValue")
+      val thrown = intercept[IllegalArgumentException] {
+        getValue(conf, key)
+      }
+      assert(thrown.getMessage.contains(key))
+    }
+  }
 }
 
 class Class1 {}
