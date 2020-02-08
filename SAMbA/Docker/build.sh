@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CASSANDRA_VERSION="3.11.2"
+CASSANDRA_VERSION="3.11.5"
 SCALA_VERSION="2.11.8"
 echo "Checking Cassandra $CASSANDRA_VERSION Files "
 if [ ! -f "apache-cassandra-$CASSANDRA_VERSION-bin.tar.gz" ]; then

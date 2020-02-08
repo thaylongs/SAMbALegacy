@@ -30,14 +30,28 @@ object DataSource {
   private var session = cluster.connect("dfanalyzer")
 
   private def createConnectionPool(): Cluster = {
+
+    var cassandraHostname = "localhost";
+    var cassandraPort = 9042;
+
+    val cassandraURL = System.getenv("CASSANDRA_DB_URL")
+    if (cassandraURL != null) {
+      val data = cassandraURL.split(":")
+      cassandraHostname = data(0)
+      if (data.length > 1) {
+        cassandraPort = data(1).toInt
+      }
+    }
+
+    println("Cassandra hostname: " + cassandraHostname + ", port: " + cassandraPort)
     val poolingOptions = new PoolingOptions
 
     poolingOptions.setConnectionsPerHost(HostDistance.LOCAL, 5, 5)
     poolingOptions.setConnectionsPerHost(HostDistance.REMOTE, 4, 4)
 
     val cluster = Cluster.builder()
-      .addContactPoint("127.0.0.1")
-      .withPort(9042)
+      .addContactPoint(cassandraHostname)
+      .withPort(cassandraPort)
       .withPoolingOptions(poolingOptions)
       .withCodecRegistry(CodecRegistry.DEFAULT_INSTANCE.register(new CodecsTaskToUUID))
       .build();
