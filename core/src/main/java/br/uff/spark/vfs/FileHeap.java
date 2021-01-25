@@ -3,6 +3,7 @@ package br.uff.spark.vfs;
 import jnr.ffi.Pointer;
 
 import java.io.File;
+import java.io.Serializable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -16,7 +17,7 @@ import java.util.Arrays;
  * https://github.com/google/jimfs/blob/master/jimfs/src/main/java/com/google/common/jimfs/RegularFile.java
  * https://github.com/google/jimfs/blob/master/jimfs/src/main/java/com/google/common/jimfs/HeapDisk.java
  */
-public class FileHeap {
+public class FileHeap implements Serializable {
 
     public static final int BLOCK_SIZE = 256 * 1024; // ~ 256 kb
     public static final int MAX_BLOCK_COUNT = 40_000; // ~ 10 gb

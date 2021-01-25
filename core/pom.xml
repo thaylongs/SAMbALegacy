@@ -423,7 +423,7 @@
     <dependency>
       <groupId>com.github.serceman</groupId>
       <artifactId>jnr-fuse</artifactId>
-      <version>0.5.1</version>
+      <version>0.5.4</version>
     </dependency>
     <!--End Fuse Lib-->
     <!-- Utils Lib-->
